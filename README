@@ -1,0 +1,40 @@
+This package offers a generalised task credentials access.
+
+This is setup to use automake tools and generated scripts and files
+are not included!
+
+For debian package building:
+
+    dpkg-buildpackage
+
+For manual building:
+
+    autoreconf -i -f -s
+    ./configure
+    make
+
+This library is really designed to utilize a kernel extension, which
+allows direct reading of a subset of credentials (UID, GID,
+supplementary groups and effective capabilities) of any task.
+
+The header ./sys/creds.h defines the library API (installed as
+/usr/include/sys/creds.h).
+
+However, if the kernel extension is not present, the library falls
+back to using /proc/<pid>/status for getting this information. The
+fallback solution can only return at most 32 supplementary groups,
+which is the current limitation of the /proc/<pid>/status.
+
+
+The build also creates "libcreds3-tools" package, which contains some
+simple utilities used in testing. These are not documented.
+
+* creds-test [creds-string ...]
+
+  does simple credentials name/number conversions
+
+* creds-get [-p pid] [-m wildcard]
+
+  shows current credentials of a process
+
+
