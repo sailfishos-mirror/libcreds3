@@ -1,4 +1,5 @@
-/*
+/* vim: noexpandtab
+ *
  * This file is part of AEGIS
  *
  * Copyright (C) 2009 Nokia Corporation
@@ -40,6 +41,7 @@ enum {
 	CREDS_UID,	/* User Identifier -- uid_t */
 	CREDS_GID,	/* Group Identifier -- gid_t */
 	CREDS_GRP,	/* Group Identifier -- gid_t */
+	CREDS_SMACK,    /* Smack label -- __u32[6] */
 	CREDS_MAX,
 };
 
