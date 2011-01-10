@@ -1,4 +1,5 @@
-/*
+/* vim: noexpandtab
+ *
  * This file is part of AEGIS
  *
  * Copyright (C) 2009-2010 Nokia Corporation
@@ -40,6 +41,7 @@
 #include <sys/creds.h>
 #include <sys/socket.h>
 #include <assert.h>
+#include <sys/types.h>
 
 /*
  * 'creds' is pure information retrieval API
@@ -63,6 +65,110 @@ struct _creds_struct
 	size_t list_size;	/* Allocated list size */
 	__u32 list[];		/* The list of items */
 	};
+
+/* Helper container for various process identifiers, as read from
+ * /proc/PID/stat.
+ */
+struct pid_tidbits {
+	pid_t pid;		/* 1st field */
+	pid_t ppid;		/* 4th field */
+	pid_t pgrp;		/* 5th field */
+	pid_t sid;		/* 6th field */
+	unsigned int tty_nr;	/* 7th field */
+};
+
+/**
+ * Helper routine to read given /proc/PID/stat.
+ * Caller must free the returned structure after use.
+ */
+static struct pid_tidbits *pid_details(const pid_t pid)
+{
+	struct pid_tidbits *details = NULL;
+	FILE *f;
+	int ret, i, j;
+	char fp[256];
+	char *buf, *buf2;
+	char *field;
+
+	ret = snprintf(fp, 255, "/proc/%u/stat", pid);
+	if (ret <= 0)
+		return NULL;
+
+	f = fopen(fp, "r");
+	if (!f)
+		return NULL;
+
+	details = calloc(sizeof(struct pid_tidbits), 1);
+	if (!details) {
+		fclose(f);
+		return NULL;
+	}
+
+	buf = calloc(4096, sizeof(char));
+	buf2 = buf; /* strsep() modifies 'buf', free(buf) would segfault */
+
+	fread(buf, sizeof(char), 4096, f);
+	fclose(f);
+
+	/* Okay, run through the buffer and pick relevant items */
+
+	/* Field #1, pid */
+	field = strsep(&buf, " ");
+	details->pid = atoi(field);
+
+	/* #2 is tricky. Process name is between parentheses and may contain
+	 * embedded spaces. To properly skip this field, use ') ' as
+	 * delimiter.
+	 *
+	 * XXX: Technically it is possible to fool this check, if someone is
+	 * nasty enough to create a process name that actually contains
+	 * embedded ') ' string. For now, let's assume that nobody does
+	 * that.
+	 * FIXME: find a good solution.
+	 */
+	field = strsep(&buf, ") ");
+	field = strsep(&buf, " ");
+
+	/* Field #4, ppid */
+	field = strsep(&buf, " ");
+	details->ppid = atoi(field);
+
+	/* Field #5, pgrp */
+	field = strsep(&buf, " ");
+	details->pgrp = atoi(field);
+
+	/* Field #6, sid */
+	field = strsep(&buf, " ");
+	details->sid = atoi(field);
+
+	/* Field #7, tty_nr */
+	field = strsep(&buf, " ");
+	details->tty_nr = atoi(field);
+
+	/* According to linux/fs/proc/array.c the kernel capabilities are
+	 * exported, but the format is not really documented.
+	 */
+
+	/* TODO: implement capability excavation here */
+
+
+	free(buf2);
+	return details;
+}
+
+static int tidbit_cmp(struct pid_tidbits *p1, struct pid_tidbits *p2)
+{
+	return (p1->pid == p2->pid &&
+		p1->ppid == p2->ppid &&
+		p1->pgrp == p2->pgrp &&
+		p1->sid == p2->sid &&
+		p1->tty_nr == p2->tty_nr
+		);
+}
+
+
+
+
 
 /* Prefixes of supported credentials types used
  * by the string to value conversion.
