@@ -6,6 +6,7 @@ nobase_include_HEADERS = sys/creds.h
 
 libcreds_la_LDFLAGS = -version-info 3:0
 libcreds_la_SOURCES = creds.c credsctl.c cap_names.h
+libcreds_la_LIBADD = -lsmack
 
 creds_test_SOURCES = creds-test.c
 creds_test_LDADD = -L.libs -lcreds
