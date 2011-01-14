@@ -252,8 +252,9 @@ static struct pid_tidbits *pid_details(const pid_t pid)
 	field = strsep(&line, "\t"); /* finds "EffGrp:" */
 	field = strsep(&line, "\n");
 	memcpy(ascint, field, 8);
-	details->kcaps[0] = atoi(ascint);
-	details->kcaps[1] = atoi(field+8);
+	/* Mask is printed in hex */
+	details->kcaps[0] = (__u32) strtol(ascint, NULL, 16);
+	details->kcaps[1] = (__u32) strtol(field+8, NULL, 16);
 
 	free(buf4);
 
