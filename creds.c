@@ -350,7 +350,7 @@ void creds_free(creds_t creds)
  * pid_details() returns all of these combined, but it means that each
  * call actually performs two distinct open()/read()/close/() cycles.
  */
-long creds_proc_get(const pid_t pid, char **smack,
+static long creds_proc_get(const pid_t pid, char **smack,
 	__u32 *list, const int list_size)
 {
 	struct pid_tidbits *p1;
