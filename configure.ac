@@ -18,9 +18,10 @@ fi
 AM_CONDITIONAL([DOXY_DOC],[test ! -z "$DOXYGEN"])
 
 # This second $DOXYGEN variable is used inside dox/Makefile.am
-AC_SUBST([DOXYGEN], [$DOXYGEN])				
+AC_SUBST([DOXYGEN], [$DOXYGEN])
 
 AC_CONFIG_MACRO_DIR([m4])
 AC_PROG_MAKE_SET
-AC_CHECK_HEADERS(linux/aegis/creds.h)	
+AC_CHECK_HEADERS(linux/aegis/creds.h)
+AC_CHECK_HEADERS(sys/smack.h)
 AC_OUTPUT(Makefile dox/Makefile)

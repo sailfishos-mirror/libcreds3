@@ -40,6 +40,7 @@
 #include <sys/creds.h>
 #include <sys/socket.h>
 #include <assert.h>
+#include <sys/smack.h>
 
 /*
  * 'creds' is pure information retrieval API
@@ -80,6 +81,7 @@ creds_fixed_types[CREDS_MAX] =
 	[CREDS_GID] = STRING("GID::"),
 	[CREDS_GRP] = STRING("GRP::"),
 	[CREDS_CAP] = STRING("CAP::"),
+	[CREDS_SMACK] = STRING("SMACK::"),
 	};
 
 static const __u32 *find_value(int type, creds_t creds)
@@ -259,6 +261,16 @@ static long creds_str2gid(const char *group)
 	return gid;
 }
 
+static long creds_str2smack(const char *smack_long)
+{
+	char short_name[9];
+	long val;
+
+	smack_label_set_get_short_name(smack_long, short_name);
+	val = strtol(short_name, (char **)NULL, 16);
+	return val;
+}
+
 static long creds_typestr2creds(creds_type_t type, const char *credential)
 {
 	long value;
@@ -272,6 +284,8 @@ static long creds_typestr2creds(creds_type_t type, const char *credential)
 	case CREDS_GID:
 	case CREDS_GRP:
 		return creds_str2gid(credential);
+	case CREDS_SMACK:
+		return creds_str2smack(credential);
 	default:
 		break;
 	}

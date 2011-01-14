@@ -40,6 +40,7 @@ enum {
 	CREDS_UID,	/* User Identifier -- uid_t */
 	CREDS_GID,	/* Group Identifier -- gid_t */
 	CREDS_GRP,	/* Group Identifier -- gid_t */
+	CREDS_SMACK,	/* Smack label -- _u32 */
 	CREDS_MAX,
 };
 
