@@ -31,16 +31,18 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <err.h>
-#include <fcntl.h>
 #include <ctype.h>
 #include <pwd.h>
 #include <grp.h>
 #include <sys/socket.h>
 #include <assert.h>
-#include <sys/types.h>
 #include <sys/smack.h>
 
 #include "sys/creds.h"
@@ -100,8 +102,8 @@ struct pid_tidbits {
 static struct pid_tidbits *pid_details(const pid_t pid)
 {
 	struct pid_tidbits *details = NULL;
-	FILE *f1;
-	FILE *f2;
+	int fd1, fd2;
+	ssize_t r;
 	int ret, i;
 	char fp1[256];
 	char fp2[256];
@@ -122,74 +124,70 @@ static struct pid_tidbits *pid_details(const pid_t pid)
 	 * fopen()/fclose() calls so they at least occur as close to each
 	 * other as possible.
 	 */
-	f1 = fopen(fp1, "r");
-	if (!f1)
+	fd1 = open(fp1, O_RDONLY);
+	if (!fd1) {
+		perror("open");
 		return NULL;
+	}
 
-	f2 = fopen(fp2, "r");
-	if (!f1) {
-		fclose(f1);
+	fd2 = open(fp2, O_RDONLY);
+	if (!fd2) {
+		perror("open");
+		close(fd1);
 		return NULL;
 	}
 
 
 	details = calloc(sizeof(struct pid_tidbits), 1);
 	if (!details) {
-		fclose(f1);
-		fclose(f2);
+		perror("calloc");
+		close(fd1);
+		close(fd2);
 		return NULL;
 	}
 
 	buf = calloc(4096, sizeof(char));
-	buf2 = buf; /* strsep() modifies 'buf', free(buf) would segfault */
+	buf2 = calloc(256, sizeof(char));
 
 	buf3 = calloc(4096, sizeof(char));
 	buf4 = buf3; /* Same reason as above */
 
-	fread(buf, sizeof(char), 4096, f1);
-	fclose(f1);
+	r = read(fd1, buf, 4096);
+	close(fd1);
+	if (r < 0) {
+		perror("read");
+		close(fd2);
+		free(buf);
+		free(buf3);
+	}
 
-	fread(buf3, sizeof(char), 4096, f2);
-	fclose(f2);
+	r = read(fd2, buf3, 4096);
+	close(fd2);
+	if (r < 0) {
+		perror("read");
+		free(buf);
+		free(buf3);
+	}
 
-	/* Okay, run through the buffer for /proc/PID/stat and pick relevant
-	 * items from the sequence of values
-	 */
-
-	/* Field #1, pid */
-	field = strsep(&buf, " ");
-	details->pid = atoi(field);
-
-	/* #2 is tricky. Process name is between parentheses and may contain
-	 * embedded spaces.
+	/* Extract tokens from line via sscanf()
 	 *
-	 * XXX: Technically it is possible to fool this check, if someone is
-	 * nasty enough to create a process name that actually contains
-	 * embedded ') ' string. For now, let's assume that nobody does
-	 * that.
-	 * FIXME: find a good solution.
+	 * XXX: This is insecure and fragile. If process name includes
+	 * embedded space(s), things will break. The worst thing here is
+	 * that the second fmtstring argument can not be "(%s)"; if that is
+	 * used, the picked string will be "NAME)", with the closing
+	 * parenthesis postfixed. After that, the state indicator will be
+	 * empty, and the rest of the string naturally is parsed wrong.
 	 */
-	field = strsep(&buf, ")");
-	field = strsep(&buf, " ");
-	field = strsep(&buf, " ");
-
-	/* Field #4, ppid */
-	field = strsep(&buf, " ");
-	details->ppid = atoi(field);
-
-	/* Field #5, pgrp */
-	field = strsep(&buf, " ");
-	details->pgrp = atoi(field);
-
-	/* Field #6, sid */
-	field = strsep(&buf, " ");
-	details->sid = atoi(field);
-
-	/* Field #7, tty_nr */
-	field = strsep(&buf, " ");
-	details->tty_nr = atoi(field);
-
-	/* Do we need any more fields from this file? */
+	char *dummy = calloc(32, sizeof(char));
+	ret = sscanf(buf, "%u %s %s %u %u %u %u",
+			&details->pid,
+			buf2, dummy,	/* reused pointer, unused values */
+			&details->ppid,
+			&details->pgrp,
+			&details->sid,
+			&details->tty_nr );
+	free(dummy);
+	free(buf);
 	free(buf2);
 
 
