@@ -655,6 +655,32 @@ static int creds_uid2str(creds_type_t type, creds_value_t value, char *buf, size
 	return len;
 }
 
+static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, size_t size)
+{
+	SmackLabelSet labels;
+	char short_name[9];
+	const char *long_name;
+	int len;
+
+	labels = smack_label_set_new_from_file(SMACK_LABELS_PATH);
+	if (labels == NULL)
+		return -1;
+
+    printf("success\n");
+
+	sprintf(short_name, "%X", value);
+    printf("short name: %s\n", short_name);
+	long_name = smack_label_set_to_long_name(labels, short_name);
+	if (long_name == NULL)
+		return -1;
+
+	len = snprintf(buf, size, "%s%s", creds_fixed_types[type].prefix,
+		       long_name);
+
+	smack_label_set_delete(labels);
+
+	return len;
+}
 
 int creds_creds2str(creds_type_t type, creds_value_t value, char *buf, size_t size)
 {
@@ -675,6 +701,8 @@ int creds_creds2str(creds_type_t type, creds_value_t value, char *buf, size_t si
 	case CREDS_GRP:
 	case CREDS_GID:
 		return creds_gid2str(type, value, buf, size);
+	case CREDS_SMACK:
+		return creds_smack2str(type, value, buf, size);
 	default:
 		break;
 	}

@@ -30,11 +30,16 @@
  */
 int main(int argc, char **argv)
 {
+    int ret;
 	char buf[200];
 	while (--argc > 0) {
 		creds_value_t value;
 		creds_type_t type = creds_str2creds(argv[argc], &value);
-		(void)creds_creds2str(type, value, buf, sizeof(buf));
+		ret = creds_creds2str(type, value, buf, sizeof(buf));
+		if (ret < 0) {
+			printf("Cannot convert %d to string\n", value);
+			return EXIT_FAILURE;
+		}
 		buf[sizeof(buf)-1] = 0;
 		printf("%s translates to %s = %ld\n", argv[argc], buf, value);
 	}
