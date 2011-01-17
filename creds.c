@@ -412,6 +412,9 @@ static long creds_proc_get(const pid_t pid, char *smack,
 		list[nr_items++] = tl;
 	}
 
+	free(p1);
+	free(p2);
+
 	return nr_items;
 }
 
