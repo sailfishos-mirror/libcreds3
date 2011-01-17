@@ -52,6 +52,8 @@
  */
 #include "creds_fallback.h"
 
+#define SMACK_LABEL_MAX_LEN 24
+
 
 static const int initial_list_size =
 	2 + /* uid */
@@ -63,7 +65,7 @@ static const int initial_list_size =
 struct _creds_struct
 	{
 	long actual;		/* Actual list items */
-	char smacklabel[24];	/* Text string, max 24 chars */
+	char smacklabel[SMACK_LABEL_MAX_LEN];
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
 #endif
@@ -333,8 +335,6 @@ void creds_free(creds_t creds)
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_free(creds);
 #endif
-	if (creds->smacklabel != NULL)
-		free(creds->smacklabel);
 	if (creds)
 		free(creds);
 	}
@@ -370,7 +370,7 @@ static long creds_proc_get(const pid_t pid, char *smack,
 	 * interface is provided.
 	 */
 	p1 = pid_details(pid);
-	i = smack_xattr_get_from_proc(pid, smack, 24, NULL);
+	i = smack_xattr_get_from_proc(pid, smack, SMACK_LABEL_MAX_LEN, NULL);
 	/* FIXME: handle error case if return value is -1 */
 	p2 = pid_details(pid);
 
