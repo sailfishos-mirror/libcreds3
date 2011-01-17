@@ -381,7 +381,7 @@ static long creds_proc_get(const pid_t pid, char *smack,
 		/* UID fits into a single item */
 		tl = CREDS_TL(CREDS_UID, 1);
 		list[nr_items++] = tl;
-		list[nr_items++] = p1->pid;
+		list[nr_items++] = p1->uid;
 
 		/* GID fits into a single item */
 		tl = CREDS_TL(CREDS_GID, 1);
