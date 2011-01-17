@@ -123,7 +123,7 @@ static struct pid_tidbits *pid_details(const pid_t pid)
 		return NULL;
 
 	/* Because this is already hideously racy, we're stacking the
-	 * fopen()/fclose() calls so they at least occur as close to each
+	 * open()/close() calls so they at least occur as close to each
 	 * other as possible.
 	 */
 	fd1 = open(fp1, O_RDONLY);
@@ -152,7 +152,7 @@ static struct pid_tidbits *pid_details(const pid_t pid)
 	buf2 = calloc(256, sizeof(char));
 
 	buf3 = calloc(4096, sizeof(char));
-	buf4 = buf3; /* Same reason as above */
+	buf4 = buf3; /* srtsep() modifies its argument */
 
 	r = read(fd1, buf, 4096);
 	close(fd1);
