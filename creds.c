@@ -63,7 +63,7 @@ static const int initial_list_size =
 struct _creds_struct
 	{
 	long actual;		/* Actual list items */
-	char *smacklabel;	/* Text string, max 24 chars */
+	char smacklabel[24];	/* Text string, max 24 chars */
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
 #endif
@@ -350,12 +350,11 @@ void creds_free(creds_t creds)
  * pid_details() returns all of these combined, but it means that each
  * call actually performs two distinct open()/read()/close/() cycles.
  */
-static long creds_proc_get(const pid_t pid, char **smack,
+static long creds_proc_get(const pid_t pid, char *smack,
 	__u32 *list, const int list_size)
 {
 	struct pid_tidbits *p1;
 	struct pid_tidbits *p2;
-	char *ss;
 	long nr_items = 0;
 	__u32 tl = CREDS_BAD;
 	int i;
@@ -371,13 +370,12 @@ static long creds_proc_get(const pid_t pid, char **smack,
 	 * interface is provided.
 	 */
 	p1 = pid_details(pid);
-	i = smack_xattr_get_from_proc(pid, &ss, NULL);
+	i = smack_xattr_get_from_proc(pid, smack, 24, NULL);
+	/* FIXME: handle error case if return value is -1 */
 	p2 = pid_details(pid);
 
 	if(tidbit_cmp(p1, p2))
 	{
-		*smack = ss;
-
 		/* pack values into u32 array */
 
 		/* UID fits into a single item */
@@ -409,9 +407,6 @@ static long creds_proc_get(const pid_t pid, char **smack,
 	}
 	else
 	{
-		*smack = NULL;
-		free(ss);
-
 		/* create "empty" list, pack that  */
 		tl = CREDS_TL(CREDS_MAX, initial_list_size-1);
 		list[nr_items++] = tl;
@@ -452,7 +447,7 @@ creds_t creds_gettask(pid_t pid)
 		handle = new_handle;
 		handle->list_size = actual;
 		handle->actual = actual = creds_proc_get(pid,
-				&handle->smacklabel, handle->list, handle->list_size);
+				handle->smacklabel, handle->list, handle->list_size);
 		/* warnx("max items=%d, returned %ld", handle->list_size, actual); */
 		if (actual < 0)
 			{
