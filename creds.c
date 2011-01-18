@@ -601,8 +601,8 @@ int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
 	if (! creds)
 		return 0;
 
-	if (type == CREDS_SMACK && value == creds->smack_value)
-		return 1;
+	if (type == CREDS_SMACK)
+		return value == creds->smack_value;
 
 	item = find_value(type, creds);
 	switch (type)
