@@ -66,6 +66,7 @@ struct _creds_struct
 	{
 	long actual;		/* Actual list items */
 	char smacklabel[SMACK_LABEL_MAX_LEN];
+	SmackLabelSet labels;
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
 #endif
@@ -128,7 +129,10 @@ void creds_free(creds_t creds)
 	creds_audit_free(creds);
 #endif
 	if (creds)
+		{
+		smack_label_set_delete(creds->labels);
 		free(creds);
+		}
 	}
 
 /**
@@ -170,8 +174,12 @@ creds_t creds_getpeer(int fd)
 creds_t creds_gettask(pid_t pid)
 	{
 	creds_t handle = NULL;
+	SmackLabelSet labels = NULL;
 	long actual = initial_list_size;
 	int maxtries = 4;
+
+	labels = smack_label_set_new_from_file(SMACK_LABELS_PATH);
+
 	do
 		{
 		creds_t new_handle = (creds_t)realloc(handle, sizeof(*handle) + actual * sizeof(handle->list[0]));
@@ -179,7 +187,8 @@ creds_t creds_gettask(pid_t pid)
 			{
 			/* Memory allocation failure */
 			creds_free(handle);
-			return NULL;
+			handle = NULL;
+			break;
 			}
 #ifdef CREDS_AUDIT_LOG
 		if (handle == NULL)
@@ -195,10 +204,17 @@ creds_t creds_gettask(pid_t pid)
 			/* Some error detected */
 			errno = -actual;
 			creds_free(handle);
-			return NULL;
+			handle = NULL;
+			break;
 			}
 		}
 	while (handle->list_size < actual && --maxtries > 0);
+
+	if (handle != NULL)
+		handle->labels = labels;
+	else
+		smack_label_set_delete(labels);
+
 	return handle;
 	}
 
@@ -757,11 +773,18 @@ const uint32_t *creds_export(creds_t creds, size_t *length)
 
 creds_t creds_import(const uint32_t *list, size_t length)
 {
+	SmackLabelSet labels;
 	creds_t handle;
 
-	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
-	if (!handle)
+	labels = smack_label_set_new_from_file(SMACK_LABELS_PATH);
+	if (labels == NULL)
 		return NULL;
+
+	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
+	if (!handle) {
+		smack_label_set_delete(labels);
+		return NULL;
+	}
 	handle->actual = handle->list_size = length;
 	memcpy(handle->list, list, length * sizeof(handle->list[0]));
 #ifdef CREDS_AUDIT_LOG
