@@ -236,7 +236,10 @@ static int get_cap_bits(struct stream_buf *buf, __u32 *bits, size_t max_bits)
 	return 0; /* Success */
 }
 
-static int fallback_get(pid_t pid, __u32 *list, size_t list_length)
+/**
+ * Since this is now used directly from creds.c make the function public
+ */
+int fallback_get(pid_t pid, __u32 *list, size_t list_length)
 {
 	struct stream_buf buf;
 	size_t index = 0;

@@ -74,5 +74,8 @@ long creds_kstr2creds(const char *str, long *value);
 long creds_kget(pid_t pid, __u32 *list, size_t list_length);
 long creds_kcreds2str(int type, long value, char *str, size_t str_len);
 
+/* Exposed fallback function for userspace-only functionality */
+int fallback_get(pid_t pid, __u32 *list, size_t list_length);
+
 #endif
 #endif
