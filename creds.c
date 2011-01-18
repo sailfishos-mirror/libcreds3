@@ -187,10 +187,11 @@ creds_t creds_gettask(pid_t pid)
 		return NULL;
 
 	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, NULL);
-	if (rules == NULL) {
+	if (rules == NULL) 
+		{
 		smack_label_set_delete(labels);
 		return NULL;
-	}
+		}
 
 	do
 		{
@@ -223,13 +224,16 @@ creds_t creds_gettask(pid_t pid)
 		}
 	while (handle->list_size < actual && --maxtries > 0);
 
-	if (handle != NULL) {
+	if (handle != NULL)
+		{
 		handle->labels = labels;
 		handle->rules = rules;
-	} else {
+		}
+	else
+		{
 		smack_rule_set_delete(rules);
 		smack_label_set_delete(labels);
-	}
+		}
 
 	return handle;
 	}
@@ -467,6 +471,13 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 			default:
 				break;
 			}
+
+	if (i == creds->actual)
+		{
+		*value = creds->smack_value;
+		return CREDS_SMACK;
+		}
+
 	return CREDS_BAD;
 	}
 
@@ -810,17 +821,19 @@ creds_t creds_import(const uint32_t *list, size_t length)
 		return NULL;
 
 	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, NULL);
-	if (rules == NULL) {
+	if (rules == NULL)
+		{
 		smack_label_set_delete(labels);
 		return NULL;
-	}
+		}
 
 	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
-	if (!handle) {
+	if (!handle)
+		{
 		smack_rule_set_delete(rules);
 		smack_label_set_delete(labels);
 		return NULL;
-	}
+		}
 
 	handle->labels = labels;
 	handle->rules = rules;
