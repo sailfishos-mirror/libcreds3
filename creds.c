@@ -354,67 +354,13 @@ void creds_free(creds_t creds)
 static long creds_proc_get(const pid_t pid, char *smack,
 	__u32 *list, const int list_size)
 {
-	struct pid_tidbits *p1;
-	struct pid_tidbits *p2;
 	long nr_items = 0;
 	__u32 tl = CREDS_BAD;
 	int i;
 
-	/* This is a desperate trick. Pid may change between calls, so we
-	 * read the values for pid once, then the smack label, and then the
-	 * values for pid again. Only if the two sets of values are exactly
-	 * the same, can we assume that the process stayed the same all the
-	 * time.
-	 *
-	 * XXX: This is _NOT_ secure, since credentials are not read
-	 * atomically. It is just the best estimate until more robust kernel
-	 * interface is provided.
-	 */
-	p1 = pid_details(pid);
+	nr_items = fallback_get(pid, list, list_size);
 	i = smack_xattr_get_from_proc(pid, smack, SMACK_LABEL_MAX_LEN, NULL);
 	/* FIXME: handle error case if return value is -1 */
-	p2 = pid_details(pid);
-
-	if(tidbit_cmp(p1, p2))
-	{
-		/* pack values into u32 array */
-
-		/* UID fits into a single item */
-		tl = CREDS_TL(CREDS_UID, 1);
-		list[nr_items++] = tl;
-		list[nr_items++] = p1->uid;
-
-		/* GID fits into a single item */
-		tl = CREDS_TL(CREDS_GID, 1);
-		list[nr_items++] = tl;
-		list[nr_items++] = p1->gid;
-
-		/* Kernel capabilities take up 8 octets, so they
-		 * fit into two items
-		 */
-		tl = CREDS_TL(CREDS_CAP, 2);
-		list[nr_items++] = tl;
-		list[nr_items++] = p1->kcaps[0];
-		list[nr_items++] = p1->kcaps[1];
-
-		/* Supplementary groups are variable */
-		tl = CREDS_TL(CREDS_GRP, p1->ngroups);
-		for (i = 0; i < p1->ngroups; i++)
-			list[nr_items++] = p1->grps[i];
-
-		/* Finish with filler, same as in empty case */
-		tl = CREDS_TL(CREDS_MAX, initial_list_size - nr_items);
-		list[nr_items++] = tl;
-	}
-	else
-	{
-		/* create "empty" list, pack that  */
-		tl = CREDS_TL(CREDS_MAX, initial_list_size-1);
-		list[nr_items++] = tl;
-	}
-
-	free(p1);
-	free(p2);
 
 	return nr_items;
 }
