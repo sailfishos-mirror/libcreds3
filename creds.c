@@ -186,7 +186,7 @@ creds_t creds_gettask(pid_t pid)
 	if (labels == NULL)
 		return NULL;
 
-	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, labels);
+	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, NULL);
 	if (rules == NULL) {
 		smack_label_set_delete(labels);
 		return NULL;
@@ -603,9 +603,18 @@ int creds_find(const creds_t creds, const char *pattern, char *buf, size_t size)
 
 int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t value, const char *access_type)
 {
-	return creds_have_p(creds, type, value);
-}
+	char str[9];
 
+	if (creds_have_p(creds, type, value))
+		return 1;
+
+	sprintf(str, "%X", value);
+
+	return smack_rule_set_have_access(creds->rules,
+					  creds->smack_str,
+					  str, access_type,
+					  NULL);
+}
 
 int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
 {
@@ -800,7 +809,7 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	if (labels == NULL)
 		return NULL;
 
-	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, labels);
+	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, NULL);
 	if (rules == NULL) {
 		smack_label_set_delete(labels);
 		return NULL;
