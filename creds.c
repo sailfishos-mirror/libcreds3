@@ -537,80 +537,29 @@ static int match(const char *m, const char *n)
 	return 1;
 	}
 
-
 int creds_find(const creds_t creds, const char *pattern, char *buf, size_t size)
-	{
-	int i;
+{
 	int res = CREDS_BAD;
-	size_t len = 0;
+	creds_value_t value;
+	creds_type_t type = CREDS_BAD;
+	int index;
 
 	/* ...verify for sensible arguments */
 	if (!creds || creds->actual <= 0 || pattern == NULL || buf == NULL)
 		return CREDS_BAD;
 
-	/* Note: This function could be implemented simply by calling
-	 * creds_list and creds_cred2str iteratively. The more complicated
-	 * implementation attempts to be faster by trying to limit the
-	 * number of credentials that need to be translated into string...
-	 */
+	for (;;) {
+		type = creds_list(creds, index, &value);
+		if (type == CREDS_BAD)
+			break;
 
-	/* Count the non-wild characters from pattern start */
-	while (pattern[len] && pattern[len] != '*' && pattern[len] != '?')
-		++len;
-
-	for (i = 0; i < creds->actual; i += 1 + CREDS_TLV_L(creds->list[i]))
-		{
-		const creds_type_t type = CREDS_TLV_T(creds->list[i]);
-		int j;
-
-		/* If we have non-wild start in pattern, and the type is
-		 * one of the fixed types, then we can skip this,
-		 * if the pattern start does not match the beginning
-		 * type.
-		 * Note: CREDS_GRP must be excluded from this, because
-		 * it includes strings, which do not start with GRP::!
-		 */
-		if (type != CREDS_GRP && type < CREDS_MAX && type >= 0)
-			{
-			const size_t cmplen = (len < creds_fixed_types[type].len) ? len : creds_fixed_types[type].len;
-			if (cmplen > 0 && memcmp(pattern, creds_fixed_types[type].prefix, cmplen) != 0)
-				continue; /* Pattern will never match these, look for next */
-			}
-
-		for (j = 0; j < CREDS_TLV_L(creds->list[i]); ++j)
-			{
-			const creds_value_t value = creds->list[i+1+j];
-			int k;
-
-			if (type != CREDS_CAP)
-				{
-				/* Translate 'type,value' into string and check whether it matches with
-				 * the pattern. If does, return this result.
-				 */
-				res = creds_creds2str(type, value, buf, size);
-				if (res < 0 || res >= size || match(pattern, buf) == 0)
-					return res;
-				}
-			else for (k = 0; k < 32; ++k)
-				{
-				const int capnbr = j * 32 + k;
-				const __u32 bit = 1 << k;
-				if (value & bit)
-					{
-					/* Translate 'type,value' into string and check whether it matches with
-					 * the pattern. If does, return this result.
-					 */
-					res = creds_creds2str(type, capnbr, buf, size);
-					if (res < 0 || res >= size || match(pattern, buf) == 0)
-						return res;
-					}
-				}
-			res = CREDS_BAD;
-			}
-		}
-	return res;
+		res = creds_creds2str(type, value, buf, size);
+		if (res < 0 || res >= size || match(pattern, buf) == 0)
+			return res;
 	}
 
+	return CREDS_BAD;
+}
 
 int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t value, const char *access_type)
 {
