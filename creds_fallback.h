@@ -1,4 +1,5 @@
-/*
+/* vim: noexpandtab
+ *
  * This file is part of AEGIS
  *
  * Copyright (C) 2009 Nokia Corporation

@@ -1,4 +1,5 @@
-/*
+/* vim: noexpandtab
+ *
  * This file is part of AEGIS
  *
  * Copyright (C) 2009-2010 Nokia Corporation
@@ -30,22 +31,28 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <err.h>
-#include <fcntl.h>
 #include <ctype.h>
 #include <pwd.h>
 #include <grp.h>
-#include <sys/creds.h>
 #include <sys/socket.h>
 #include <assert.h>
 #include <sys/smack.h>
+
+#include "sys/creds.h"
 
 /*
  * 'creds' is pure information retrieval API
  */
 #include "creds_fallback.h"
+
+#define SMACK_LABEL_MAX_LEN 24
 
 
 static const int initial_list_size =
@@ -58,12 +65,224 @@ static const int initial_list_size =
 struct _creds_struct
 	{
 	long actual;		/* Actual list items */
+	char smacklabel[SMACK_LABEL_MAX_LEN];
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
 #endif
 	size_t list_size;	/* Allocated list size */
-	__u32 list[];		/* The list of items */
+	__u32 list[40];		/* The list of items, initial_list_size */
 	};
+
+
+/* Helper container for various process identifiers, as read from
+ * /proc/PID/stat, /proc/PID/status and possibly other pseudofs paths.
+ */
+struct pid_tidbits {
+	/**
+	 * /proc/PID/stat
+	 */
+	pid_t pid;		/* 1st field */
+	pid_t ppid;		/* 4th field */
+	pid_t pgrp;		/* 5th field */
+	pid_t sid;		/* 6th field */
+	unsigned int tty_nr;	/* 7th field */
+
+	/**
+	 * /proc/PID/status
+	 */
+	uid_t uid;		/* Effective: prefixed by "Uid:" */
+	gid_t gid;		/* Effective: prefixed by "Gid:" */
+	__u32 kcaps[2];		/* Effective; prefixed by "CapEff:" */
+	__u32 grps[32];		/* prefixed by "Groups:" */
+	unsigned int ngroups;
+};
+
+/**
+ * Helper routine to read given /proc/PID/stat, /proc/PID/status .
+ * Caller must free the returned structure after use.
+ */
+static struct pid_tidbits *pid_details(const pid_t pid)
+{
+	struct pid_tidbits *details = NULL;
+	int fd1, fd2;
+	ssize_t r;
+	int ret, i;
+	char fp1[256];
+	char fp2[256];
+	char *buf, *buf2, *buf3, *buf4;;
+	char *field, *line;
+	char ascint[9];
+
+	memset(ascint, 0, 9);
+
+	ret = snprintf(fp1, 255, "/proc/%u/stat", pid);
+	if (ret <= 0)
+		return NULL;
+	ret = snprintf(fp2, 255, "/proc/%u/status", pid);
+	if (ret <= 0)
+		return NULL;
+
+	/* Because this is already hideously racy, we're stacking the
+	 * open()/close() calls so they at least occur as close to each
+	 * other as possible.
+	 */
+	fd1 = open(fp1, O_RDONLY);
+	if (!fd1) {
+		perror("open");
+		return NULL;
+	}
+
+	fd2 = open(fp2, O_RDONLY);
+	if (!fd2) {
+		perror("open");
+		close(fd1);
+		return NULL;
+	}
+
+
+	details = calloc(sizeof(struct pid_tidbits), 1);
+	if (!details) {
+		perror("calloc");
+		close(fd1);
+		close(fd2);
+		return NULL;
+	}
+
+	buf = calloc(4096, sizeof(char));
+	buf2 = calloc(256, sizeof(char));
+
+	buf3 = calloc(4096, sizeof(char));
+	buf4 = buf3; /* srtsep() modifies its argument */
+
+	r = read(fd1, buf, 4096);
+	close(fd1);
+	if (r < 0) {
+		perror("read");
+		close(fd2);
+		free(buf);
+		free(buf3);
+	}
+
+	r = read(fd2, buf3, 4096);
+	close(fd2);
+	if (r < 0) {
+		perror("read");
+		free(buf);
+		free(buf3);
+	}
+
+	/* Extract tokens from line via sscanf()
+	 *
+	 * XXX: This is insecure and fragile. If process name includes
+	 * embedded space(s), things will break. The worst thing here is
+	 * that the second fmtstring argument can not be "(%s)"; if that is
+	 * used, the picked string will be "NAME)", with the closing
+	 * parenthesis postfixed. After that, the state indicator will be
+	 * empty, and the rest of the string naturally is parsed wrong.
+	 */
+	char *dummy = calloc(32, sizeof(char));
+	ret = sscanf(buf, "%u %s %s %u %u %u %u",
+			&details->pid,
+			buf2, dummy,	/* reused pointer, unused values */
+			&details->ppid,
+			&details->pgrp,
+			&details->sid,
+			&details->tty_nr );
+	free(dummy);
+	free(buf);
+	free(buf2);
+
+
+	/* Okay, then to /proc/PID/status contents.
+	 * The file contains lots of newlines, so we'll have to seek into
+	 * the lines and fields we need.
+	 */
+
+	/* Find uid */
+	while (1) {
+		line = strsep(&buf3, "\n");
+		if (strncmp(line, "Uid:", 4) == 0)
+			break;
+	}
+	field = strsep(&line, "\t"); /* finds "Uid:" */
+	field = strsep(&line, "\t");
+	field = strsep(&line, "\t"); /* euid: second item */
+	details->uid = atoi(field);
+
+	/* Shortcut: Gid is immediately followed by Uid */
+	line = strsep(&buf3, "\n");
+	field = strsep(&line, "\t"); /* finds "Gid:" */
+	field = strsep(&line, "\t");
+	field = strsep(&line, "\t"); /* egid: second item */
+	details->gid = atoi(field);
+
+	/* Find the groups */
+	while (1) {
+		line = strsep(&buf3, "\n");
+		if (strncmp(line, "Groups:", 7) == 0)
+			break;
+	}
+	field = strsep(&line, "\t"); /* Go past "Group:\t" */
+	/* reuse buf, buf2 */
+	buf = strdup(line);
+	buf2 = buf;
+	i = 0;
+	while (strlen(field) >= 1) {
+		field = strsep(&buf, " ");
+		if (field[0] == '\0')
+			break;
+		details->grps[i++] = atoi(field);
+		if (i == 32) /* Catch nasty corner case */
+			break;
+	}
+	details->ngroups = i;
+	free(buf2);
+
+
+	/* According to linux/fs/proc/array.c the kernel capabilities are
+	 * exported via /proc/PID/status but the format is not really
+	 * documented. Capabilities are a 64-bit bitmask, packed into
+	 * two __u32's and printed as a single string, "%08x%08x"
+	 */
+
+	/* Find the bitmask value of CapEff */
+	while (1) {
+		line = strsep(&buf3, "\n");
+		if (strncmp(line, "CapEff:", 7) == 0)
+			break;
+	}
+	field = strsep(&line, "\t"); /* finds "EffGrp:" */
+	field = strsep(&line, "\n");
+	memcpy(ascint, field, 8);
+	/* Mask is printed in hex */
+	details->kcaps[0] = (__u32) strtol(ascint, NULL, 16);
+	details->kcaps[1] = (__u32) strtol(field+8, NULL, 16);
+
+	free(buf4);
+
+	return details;
+}
+
+static int tidbit_cmp(struct pid_tidbits *p1, struct pid_tidbits *p2)
+{
+	int i;
+	if (p1->ngroups != p2->ngroups)
+		return 0;
+	for (i = 0; i < p1->ngroups; i++)
+		if (p1->grps[i] != p2->grps[i])
+			return 0;
+
+	return (p1->pid == p2->pid &&
+		p1->ppid == p2->ppid &&
+		p1->pgrp == p2->pgrp &&
+		p1->sid == p2->sid &&
+		p1->tty_nr == p2->tty_nr &&
+		p1->kcaps[0] == p2->kcaps[0] &&
+		p1->kcaps[1] == p2->kcaps[1]
+		);
+}
+
+
 
 /* Prefixes of supported credentials types used
  * by the string to value conversion.
@@ -121,6 +340,86 @@ void creds_free(creds_t creds)
 		free(creds);
 	}
 
+/**
+ * Userspace-only "replacement" for creds_kget()
+ *
+ * The SMACK label for the given process is read from
+ * /proc/PID/attr/current, and since libsmack happily provides that
+ * routine, we'll pull the label from there.
+ *
+ * The credentials are exported via /proc/PID/status. The call to
+ * pid_details() returns all of these combined, but it means that each
+ * call actually performs two distinct open()/read()/close/() cycles.
+ */
+static long creds_proc_get(const pid_t pid, char *smack,
+	__u32 *list, const int list_size)
+{
+	struct pid_tidbits *p1;
+	struct pid_tidbits *p2;
+	long nr_items = 0;
+	__u32 tl = CREDS_BAD;
+	int i;
+
+	/* This is a desperate trick. Pid may change between calls, so we
+	 * read the values for pid once, then the smack label, and then the
+	 * values for pid again. Only if the two sets of values are exactly
+	 * the same, can we assume that the process stayed the same all the
+	 * time.
+	 *
+	 * XXX: This is _NOT_ secure, since credentials are not read
+	 * atomically. It is just the best estimate until more robust kernel
+	 * interface is provided.
+	 */
+	p1 = pid_details(pid);
+	i = smack_xattr_get_from_proc(pid, smack, SMACK_LABEL_MAX_LEN, NULL);
+	/* FIXME: handle error case if return value is -1 */
+	p2 = pid_details(pid);
+
+	if(tidbit_cmp(p1, p2))
+	{
+		/* pack values into u32 array */
+
+		/* UID fits into a single item */
+		tl = CREDS_TL(CREDS_UID, 1);
+		list[nr_items++] = tl;
+		list[nr_items++] = p1->uid;
+
+		/* GID fits into a single item */
+		tl = CREDS_TL(CREDS_GID, 1);
+		list[nr_items++] = tl;
+		list[nr_items++] = p1->gid;
+
+		/* Kernel capabilities take up 8 octets, so they
+		 * fit into two items
+		 */
+		tl = CREDS_TL(CREDS_CAP, 2);
+		list[nr_items++] = tl;
+		list[nr_items++] = p1->kcaps[0];
+		list[nr_items++] = p1->kcaps[1];
+
+		/* Supplementary groups are variable */
+		tl = CREDS_TL(CREDS_GRP, p1->ngroups);
+		for (i = 0; i < p1->ngroups; i++)
+			list[nr_items++] = p1->grps[i];
+
+		/* Finish with filler, same as in empty case */
+		tl = CREDS_TL(CREDS_MAX, initial_list_size - nr_items);
+		list[nr_items++] = tl;
+	}
+	else
+	{
+		/* create "empty" list, pack that  */
+		tl = CREDS_TL(CREDS_MAX, initial_list_size-1);
+		list[nr_items++] = tl;
+	}
+
+	free(p1);
+	free(p2);
+
+	return nr_items;
+}
+
+
 creds_t creds_getpeer(int fd)
 	{
 	struct ucred cr;
@@ -151,7 +450,8 @@ creds_t creds_gettask(pid_t pid)
 #endif
 		handle = new_handle;
 		handle->list_size = actual;
-		handle->actual = actual = creds_kget(pid, handle->list, handle->list_size);
+		handle->actual = actual = creds_proc_get(pid,
+				handle->smacklabel, handle->list, handle->list_size);
 		/* warnx("max items=%d, returned %ld", handle->list_size, actual); */
 		if (actual < 0)
 			{
