@@ -703,8 +703,6 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	if (labels == NULL)
 		return -1;
 
-    printf("success\n");
-
 	sprintf(short_name, "%X", value);
     printf("short name: %s\n", short_name);
 	long_name = smack_label_set_to_long_name(labels, short_name);
