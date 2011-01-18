@@ -65,7 +65,8 @@ static const int initial_list_size =
 struct _creds_struct
 	{
 	long actual;		/* Actual list items */
-	char smacklabel[SMACK_LABEL_MAX_LEN];
+	char smack_str[SMACK_LABEL_MAX_LEN];
+	creds_value_t smack_value;
 	SmackLabelSet labels;
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
@@ -197,7 +198,8 @@ creds_t creds_gettask(pid_t pid)
 		handle = new_handle;
 		handle->list_size = actual;
 		handle->actual = actual = creds_proc_get(pid,
-				handle->smacklabel, handle->list, handle->list_size);
+				handle->smack_str, handle->list, handle->list_size);
+		handle->smack_value = strtol(handle->smack_str, (char **)NULL, 16);
 		/* warnx("max items=%d, returned %ld", handle->list_size, actual); */
 		if (actual < 0)
 			{
@@ -598,6 +600,9 @@ int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
 
 	if (! creds)
 		return 0;
+
+	if (type == CREDS_SMACK && value == creds->smack_value)
+		return 1;
 
 	item = find_value(type, creds);
 	switch (type)
