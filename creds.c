@@ -564,9 +564,11 @@ int creds_find(const creds_t creds, const char *pattern, char *buf, size_t size)
 int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t value, const char *access_type)
 {
 	char str[9];
+	int res;
 
-	if (creds_have_p(creds, type, value))
-		return 1;
+	res = creds_have_p(creds, type, value);
+	if (res || type != CREDS_SMACK)
+		return res;
 
 	sprintf(str, "%X", value);
 
