@@ -67,7 +67,6 @@ struct _creds_struct
 	long actual;		/* Actual list items */
 	char smack_str[SMACK_LABEL_MAX_LEN];
 	creds_value_t smack_value;
-	SmackLabelSet labels;
 	SmackRuleSet rules;
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
@@ -133,7 +132,6 @@ void creds_free(creds_t creds)
 	if (creds)
 		{
 		smack_rule_set_delete(creds->rules);
-		smack_label_set_delete(creds->labels);
 		free(creds);
 		}
 	}
@@ -177,21 +175,13 @@ creds_t creds_getpeer(int fd)
 creds_t creds_gettask(pid_t pid)
 	{
 	creds_t handle = NULL;
-	SmackLabelSet labels = NULL;
 	SmackRuleSet rules = NULL;
 	long actual = initial_list_size;
 	int maxtries = 4;
 
-	labels = smack_label_set_new_from_file(SMACK_LABELS_PATH);
-	if (labels == NULL)
-		return NULL;
-
 	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, NULL);
-	if (rules == NULL) 
-		{
-		smack_label_set_delete(labels);
+	if (rules == NULL)
 		return NULL;
-		}
 
 	do
 		{
@@ -225,15 +215,9 @@ creds_t creds_gettask(pid_t pid)
 	while (handle->list_size < actual && --maxtries > 0);
 
 	if (handle != NULL)
-		{
-		handle->labels = labels;
 		handle->rules = rules;
-		}
 	else
-		{
 		smack_rule_set_delete(rules);
-		smack_label_set_delete(labels);
-		}
 
 	return handle;
 	}
@@ -763,30 +747,20 @@ const uint32_t *creds_export(creds_t creds, size_t *length)
 
 creds_t creds_import(const uint32_t *list, size_t length)
 {
-	SmackLabelSet labels;
 	SmackRuleSet rules;
 	creds_t handle;
 
-	labels = smack_label_set_new_from_file(SMACK_LABELS_PATH);
-	if (labels == NULL)
-		return NULL;
-
 	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, NULL);
 	if (rules == NULL)
-		{
-		smack_label_set_delete(labels);
 		return NULL;
-		}
 
 	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
 	if (!handle)
 		{
 		smack_rule_set_delete(rules);
-		smack_label_set_delete(labels);
 		return NULL;
 		}
 
-	handle->labels = labels;
 	handle->rules = rules;
 
 	handle->actual = handle->list_size = length;
