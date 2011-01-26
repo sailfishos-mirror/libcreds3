@@ -24,4 +24,5 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_PROG_MAKE_SET
 AC_CHECK_HEADERS(linux/aegis/creds.h)
 AC_CHECK_HEADERS(sys/smack.h)
+AC_CHECK_HEADERS(sys/smackman.h)
 AC_OUTPUT(Makefile dox/Makefile)

@@ -44,6 +44,7 @@
 #include <sys/socket.h>
 #include <assert.h>
 #include <sys/smack.h>
+#include <sys/smackman.h>
 
 #include "sys/creds.h"
 
@@ -52,8 +53,8 @@
  */
 #include "creds_fallback.h"
 
+#define SMACK_PROC_PATH "/proc/%d/attr/current"
 #define SMACK_LABEL_MAX_LEN 24
-
 
 static const int initial_list_size =
 	2 + /* uid */
@@ -150,17 +151,28 @@ void creds_free(creds_t creds)
 static long creds_proc_get(const pid_t pid, char *smack,
 	__u32 *list, const int list_size)
 {
+	FILE *file;
+	char buf[512];
 	long nr_items = 0;
 	__u32 tl = CREDS_BAD;
-	int i;
 
 	nr_items = fallback_get(pid, list, list_size);
-	i = smack_xattr_get_from_proc(pid, smack, SMACK_LABEL_MAX_LEN, NULL);
-	/* FIXME: handle error case if return value is -1 */
+
+	snprintf(buf, sizeof(buf), SMACK_PROC_PATH, pid);
+
+	file = fopen(buf, "r");
+	if (file == NULL)
+		return -1;
+
+	if (fgets(buf, sizeof(buf), file) == NULL) {
+		fclose(file);
+		return -1;
+	}
+
+	fclose(file);
 
 	return nr_items;
 }
-
 
 creds_t creds_getpeer(int fd)
 	{
@@ -179,7 +191,7 @@ creds_t creds_gettask(pid_t pid)
 	long actual = initial_list_size;
 	int maxtries = 4;
 
-	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, NULL);
+	rules = smack_rule_set_new(SMACKM_RULES_PATH, NULL);
 	if (rules == NULL)
 		return NULL;
 
@@ -320,12 +332,18 @@ static long creds_str2gid(const char *group)
 
 static long creds_str2smack(const char *smack_long)
 {
-	char short_name[9];
-	long val;
+	uint32_t h;
+	int i, c;
 
-	smack_label_set_get_short_name(smack_long, short_name);
-	val = strtol(short_name, (char **)NULL, 16);
-	return val;
+	// djb2 based on http://www.cse.yorku.ca/~oz/hash.html
+	h = 5381;
+
+	for (i = 0; smack_long[i] != '\0'; i++) {
+		c = smack_long[i];
+		h = ((h << 5) + h) + c;
+	}
+
+	return h;
 }
 
 static long creds_typestr2creds(creds_type_t type, const char *credential)
@@ -557,8 +575,7 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 
 	return smack_rule_set_have_access(creds->rules,
 					  creds->smack_str,
-					  str, access_type,
-					  NULL);
+					  str, access_type);
 }
 
 int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
@@ -683,24 +700,24 @@ static int creds_uid2str(creds_type_t type, creds_value_t value, char *buf, size
 
 static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, size_t size)
 {
-	SmackLabelSet labels;
+	SmackmContext ctx;
 	char short_name[9];
 	const char *long_name;
 	int len;
 
-	labels = smack_label_set_new_from_file(SMACK_LABELS_PATH);
-	if (labels == NULL)
+	ctx = smackm_new(NULL, SMACKM_LABELS_PATH);
+	if (ctx == NULL)
 		return -1;
 
 	sprintf(short_name, "%X", value);
-	long_name = smack_label_set_to_long_name(labels, short_name);
+	long_name = smackm_to_long_name(ctx, short_name);
 	if (long_name == NULL)
 		return -1;
 
 	len = snprintf(buf, size, "%s%s", creds_fixed_types[type].prefix,
 		       long_name);
 
-	smack_label_set_delete(labels);
+	smackm_delete(ctx);
 
 	return len;
 }
@@ -749,7 +766,7 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	SmackRuleSet rules;
 	creds_t handle;
 
-	rules = smack_rule_set_new_from_file(SMACK_ACCESSES_PATH, NULL, NULL);
+	rules = smack_rule_set_new(SMACKM_RULES_PATH, NULL);
 	if (rules == NULL)
 		return NULL;
 
