@@ -54,6 +54,7 @@
 #include "creds_fallback.h"
 
 #define SMACK_PROC_PATH "/proc/%d/attr/current"
+#define SMACK_PROC_SELF_PATH "/proc/self/attr/current"
 #define SMACK_LABEL_MAX_LEN 24
 
 static const int initial_list_size =
@@ -158,7 +159,10 @@ static long creds_proc_get(const pid_t pid, char *smack,
 
 	nr_items = fallback_get(pid, list, list_size);
 
-	snprintf(buf, sizeof(buf), SMACK_PROC_PATH, pid);
+	if (pid == 0)
+		snprintf(buf, sizeof(buf), SMACK_PROC_SELF_PATH);
+	else
+		snprintf(buf, sizeof(buf), SMACK_PROC_PATH, pid);
 
 	file = fopen(buf, "r");
 	if (file == NULL)
