@@ -171,6 +171,8 @@ static long creds_proc_get(const pid_t pid, char *smack,
 
 	fclose(file);
 
+	strcpy(smack, buf);
+
 	return nr_items;
 }
 
