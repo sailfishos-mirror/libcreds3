@@ -456,7 +456,7 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 				break;
 			}
 
-	if (i == creds->actual)
+	if (index == 0)
 		{
 		*value = creds->smack_value;
 		return CREDS_SMACK;
@@ -464,7 +464,6 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 
 	return CREDS_BAD;
 	}
-
 
 /*
 ** match() Iterative matching function, rather than recursive. Based
@@ -554,7 +553,7 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	if (res || type != CREDS_SMACK)
 		return res;
 
-	sprintf(str, "%X", value);
+	sprintf(str, "%08X", value);
 
 	return smack_rule_set_have_access(creds->rules,
 					  creds->smack_str,
