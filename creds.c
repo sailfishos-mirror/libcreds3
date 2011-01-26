@@ -98,6 +98,10 @@ creds_fixed_types[CREDS_MAX] =
 	[CREDS_SMACK] = STRING("SMACK::"),
 	};
 
+static long creds_proc_get(const pid_t pid,
+	__u32 *list, const int list_size,
+	char *smack_str, creds_value_t *smack_value);
+
 static const __u32 *find_value(int type, creds_t creds)
 	{
 	static const __u32 bad_tlv[] = {0};
@@ -138,48 +142,6 @@ void creds_free(creds_t creds)
 		}
 	}
 
-/**
- * Userspace-only "replacement" for creds_kget()
- *
- * The SMACK label for the given process is read from
- * /proc/PID/attr/current, and since libsmack happily provides that
- * routine, we'll pull the label from there.
- *
- * The credentials are exported via /proc/PID/status. The call to
- * pid_details() returns all of these combined, but it means that each
- * call actually performs two distinct open()/read()/close/() cycles.
- */
-static long creds_proc_get(const pid_t pid, char *smack,
-	__u32 *list, const int list_size)
-{
-	FILE *file;
-	char buf[512];
-	long nr_items = 0;
-	__u32 tl = CREDS_BAD;
-
-	nr_items = fallback_get(pid, list, list_size);
-
-	if (pid == 0)
-		snprintf(buf, sizeof(buf), SMACK_PROC_SELF_PATH);
-	else
-		snprintf(buf, sizeof(buf), SMACK_PROC_PATH, pid);
-
-	file = fopen(buf, "r");
-	if (file == NULL)
-		return -1;
-
-	if (fgets(buf, sizeof(buf), file) == NULL) {
-		fclose(file);
-		return -1;
-	}
-
-	fclose(file);
-
-	strcpy(smack, buf);
-
-	return nr_items;
-}
-
 creds_t creds_getpeer(int fd)
 	{
 	struct ucred cr;
@@ -218,8 +180,8 @@ creds_t creds_gettask(pid_t pid)
 		handle = new_handle;
 		handle->list_size = actual;
 		handle->actual = actual = creds_proc_get(pid,
-				handle->smack_str, handle->list, handle->list_size);
-		handle->smack_value = strtol(handle->smack_str, (char **)NULL, 16);
+				handle->list, handle->list_size,
+				handle->smack_str, &handle->smack_value);
 		/* warnx("max items=%d, returned %ld", handle->list_size, actual); */
 		if (actual < 0)
 			{
@@ -791,6 +753,39 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	creds_audit_init(handle, -1);
 #endif
 	return handle;
+}
+
+static long creds_proc_get(const pid_t pid,
+	__u32 *list, const int list_size,
+	char *smack_str, creds_value_t *smack_value)
+{
+	FILE *file;
+	char buf[512];
+	long nr_items = 0;
+	__u32 tl = CREDS_BAD;
+
+	nr_items = fallback_get(pid, list, list_size);
+
+	if (pid == 0)
+		snprintf(buf, sizeof(buf), SMACK_PROC_SELF_PATH);
+	else
+		snprintf(buf, sizeof(buf), SMACK_PROC_PATH, pid);
+
+	file = fopen(buf, "r");
+	if (file == NULL)
+		return -1;
+
+	if (fgets(buf, sizeof(buf), file) == NULL) {
+		fclose(file);
+		return -1;
+	}
+
+	fclose(file);
+
+	strcpy(smack_str, buf);
+	*smack_value = strtol(smack_str, (char **)NULL, 16);
+
+	return nr_items;
 }
 
 
