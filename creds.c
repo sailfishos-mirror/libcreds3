@@ -98,9 +98,10 @@ creds_fixed_types[CREDS_MAX] =
 	[CREDS_SMACK] = STRING("SMACK::"),
 	};
 
-static long creds_proc_get(const pid_t pid,
-	__u32 *list, const int list_size,
-	char *smack_str, creds_value_t *smack_value);
+static void creds_get_smack(
+	const pid_t pid,
+	char *smack_str,
+	creds_value_t *smack_value);
 
 static const __u32 *find_value(int type, creds_t creds)
 	{
@@ -179,9 +180,9 @@ creds_t creds_gettask(pid_t pid)
 #endif
 		handle = new_handle;
 		handle->list_size = actual;
-		handle->actual = actual = creds_proc_get(pid,
-				handle->list, handle->list_size,
-				handle->smack_str, &handle->smack_value);
+		handle->actual = actual =
+			fallback_get(pid, handle->list, handle->list_size);
+		creds_get_smack(pid, handle->smack_str, &handle->smack_value);
 		/* warnx("max items=%d, returned %ld", handle->list_size, actual); */
 		if (actual < 0)
 			{
@@ -536,7 +537,7 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	int res;
 
 	res = creds_have_p(creds, type, value);
-	if (res || type != CREDS_SMACK)
+	if (res || type != CREDS_SMACK || creds->smack_str == NULL)
 		return res;
 
 	sprintf(str, "%08X", value);
@@ -554,7 +555,7 @@ int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
 	if (! creds)
 		return 0;
 
-	if (type == CREDS_SMACK)
+	if (type == CREDS_SMACK && creds->smack_str != NULL)
 		return value == creds->smack_value;
 
 	item = find_value(type, creds);
@@ -755,16 +756,13 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	return handle;
 }
 
-static long creds_proc_get(const pid_t pid,
-	__u32 *list, const int list_size,
-	char *smack_str, creds_value_t *smack_value)
+static void creds_get_smack(
+	const pid_t pid,
+	char *smack_str,
+	creds_value_t *smack_value)
 {
 	FILE *file;
 	char buf[512];
-	long nr_items = 0;
-	__u32 tl = CREDS_BAD;
-
-	nr_items = fallback_get(pid, list, list_size);
 
 	if (pid == 0)
 		snprintf(buf, sizeof(buf), SMACK_PROC_SELF_PATH);
@@ -772,12 +770,17 @@ static long creds_proc_get(const pid_t pid,
 		snprintf(buf, sizeof(buf), SMACK_PROC_PATH, pid);
 
 	file = fopen(buf, "r");
-	if (file == NULL)
-		return -1;
+	if (file == NULL) {
+		smack_str = NULL;
+		*smack_value = 0;
+		return;
+	}
 
 	if (fgets(buf, sizeof(buf), file) == NULL) {
 		fclose(file);
-		return -1;
+		smack_str = NULL;
+		*smack_value = 0;
+		return;
 	}
 
 	fclose(file);
@@ -785,12 +788,6 @@ static long creds_proc_get(const pid_t pid,
 	strcpy(smack_str, buf);
 	*smack_value = strtol(smack_str, (char **)NULL, 16);
 
-	return nr_items;
+	return;
 }
-
-
-
-
-
-
 
