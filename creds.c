@@ -677,7 +677,7 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 
 	tmp[1] = '\0';
 	for (i = 0; i < 256; i++) {
-		if (!ispunct(i))
+		if (isalnum(i))
 			continue;
 		tmp[0] = i;
 		if (creds_str2smack(tmp) == value) {
