@@ -818,6 +818,11 @@ static void creds_get_smack(
 	} else {
 		strcpy(handle->smack_str, buf);
 		handle->smack_value = strtol(handle->smack_str, (char **)NULL, 16);
+
+		if (smackm_to_long_name(handle->labels, handle->smack_str) == NULL) {
+			handle->smack_str[0] = '\0';
+			handle->smack_value = 0;
+		}
 	}
 }
 
