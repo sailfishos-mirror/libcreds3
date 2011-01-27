@@ -70,14 +70,13 @@ struct _creds_struct
 	char smack_str[SMACK_LABEL_MAX_LEN];
 	creds_value_t smack_value;
 	SmackRuleSet rules;
+	SmackmContext labels;
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
 #endif
 	size_t list_size;	/* Allocated list size */
 	__u32 list[40];		/* The list of items, initial_list_size */
 	};
-
-
 
 /* Prefixes of supported credentials types used
  * by the string to value conversion.
@@ -100,8 +99,7 @@ creds_fixed_types[CREDS_MAX] =
 
 static void creds_get_smack(
 	const pid_t pid,
-	char *smack_str,
-	creds_value_t *smack_value);
+	creds_t handle);
 
 static const __u32 *find_value(int type, creds_t creds)
 	{
@@ -139,6 +137,7 @@ void creds_free(creds_t creds)
 	if (creds)
 		{
 		smack_rule_set_delete(creds->rules);
+		smackm_delete(creds->labels);
 		free(creds);
 		}
 	}
@@ -154,56 +153,56 @@ creds_t creds_getpeer(int fd)
 	}
 
 creds_t creds_gettask(pid_t pid)
-	{
+{
 	creds_t handle = NULL;
-	SmackRuleSet rules = NULL;
 	long actual = initial_list_size;
 	int maxtries = 4;
 
-	rules = smack_rule_set_new(SMACKM_RULES_PATH, NULL);
-	if (rules == NULL)
-		return NULL;
-
-	do
-		{
+	do {
 		creds_t new_handle = (creds_t)realloc(handle, sizeof(*handle) + actual * sizeof(handle->list[0]));
-		if (! new_handle)
-			{
+		if (! new_handle) {
 			/* Memory allocation failure */
 			creds_free(handle);
 			handle = NULL;
 			break;
-			}
+		}
+
 #ifdef CREDS_AUDIT_LOG
 		if (handle == NULL)
 			creds_audit_init(new_handle, pid);
 #endif
 		handle = new_handle;
+
+		handle->rules = smack_rule_set_new(SMACKM_RULES_PATH, NULL);
+		if (handle->rules == NULL) {
+			creds_free(handle);
+			handle = NULL;
+			break;
+		}
+
+		handle->labels = smackm_new(NULL, SMACKM_LABELS_PATH);
+		if (handle->labels == NULL) {
+			creds_free(handle);
+			handle = NULL;
+			break;
+		}
+
 		handle->list_size = actual;
 		handle->actual = actual =
 			fallback_get(pid, handle->list, handle->list_size);
-		creds_get_smack(pid, handle->smack_str, &handle->smack_value);
+		creds_get_smack(pid, handle);
 		/* warnx("max items=%d, returned %ld", handle->list_size, actual); */
-		if (actual < 0)
-			{
+		if (actual < 0) {
 			/* Some error detected */
 			errno = -actual;
 			creds_free(handle);
 			handle = NULL;
 			break;
-			}
 		}
-	while (handle->list_size < actual && --maxtries > 0);
-
-	if (handle != NULL)
-		handle->rules = rules;
-	else
-		smack_rule_set_delete(rules);
+	} while (handle->list_size < actual && --maxtries > 0);
 
 	return handle;
-	}
-
-
+}
 
 static int numeric_p(const char *str, long *value)
 	{
@@ -443,7 +442,7 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 				break;
 			}
 
-	if (index == 0)
+	if (index == 0 && creds->smack_str[0] != '\0')
 		{
 		*value = creds->smack_value;
 		return CREDS_SMACK;
@@ -537,7 +536,7 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	int res;
 
 	res = creds_have_p(creds, type, value);
-	if (res || type != CREDS_SMACK || creds->smack_str == NULL)
+	if (res || type != CREDS_SMACK || creds->smack_str[0] == '\0')
 		return res;
 
 	sprintf(str, "%08X", value);
@@ -555,7 +554,7 @@ int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
 	if (! creds)
 		return 0;
 
-	if (type == CREDS_SMACK && creds->smack_str != NULL)
+	if (type == CREDS_SMACK && creds->smack_str[0] != '\0')
 		return value == creds->smack_value;
 
 	item = find_value(type, creds);
@@ -672,13 +671,29 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	SmackmContext ctx;
 	char short_name[9];
 	const char *long_name;
+	char tmp[2];
 	int len;
+	int i;
+
+	tmp[1] = '\0';
+	for (i = 0; i < 256; i++) {
+		if (!ispunct(i))
+			continue;
+		tmp[0] = i;
+		if (creds_str2smack(tmp) == value) {
+			if (size < 2)
+				return -1;
+			buf[0] = i;
+			buf[1] = '\0';
+			return 1;
+		}
+	}
 
 	ctx = smackm_new(NULL, SMACKM_LABELS_PATH);
 	if (ctx == NULL)
 		return -1;
 
-	sprintf(short_name, "%X", value);
+	sprintf(short_name, "%08X", value);
 	long_name = smackm_to_long_name(ctx, short_name);
 	if (long_name == NULL)
 		return -1;
@@ -733,20 +748,28 @@ const uint32_t *creds_export(creds_t creds, size_t *length)
 creds_t creds_import(const uint32_t *list, size_t length)
 {
 	SmackRuleSet rules;
+	SmackmContext labels;
 	creds_t handle;
 
 	rules = smack_rule_set_new(SMACKM_RULES_PATH, NULL);
 	if (rules == NULL)
 		return NULL;
 
-	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
-	if (!handle)
-		{
+	labels = smackm_new(NULL, SMACKM_LABELS_PATH);
+	if (labels == NULL) {
 		smack_rule_set_delete(rules);
 		return NULL;
-		}
+	}
+
+	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
+	if (!handle) {
+		smack_rule_set_delete(rules);
+		smackm_delete(labels);
+		return NULL;
+	}
 
 	handle->rules = rules;
+	handle->labels = labels;
 
 	handle->actual = handle->list_size = length;
 	memcpy(handle->list, list, length * sizeof(handle->list[0]));
@@ -758,8 +781,7 @@ creds_t creds_import(const uint32_t *list, size_t length)
 
 static void creds_get_smack(
 	const pid_t pid,
-	char *smack_str,
-	creds_value_t *smack_value)
+	creds_t handle)
 {
 	FILE *file;
 	char buf[512];
@@ -771,23 +793,31 @@ static void creds_get_smack(
 
 	file = fopen(buf, "r");
 	if (file == NULL) {
-		smack_str = NULL;
-		*smack_value = 0;
+		handle->smack_str[0] = '\0';
+		handle->smack_value = 0;
 		return;
 	}
 
 	if (fgets(buf, sizeof(buf), file) == NULL) {
 		fclose(file);
-		smack_str = NULL;
-		*smack_value = 0;
+		handle->smack_str[0] = '\0';
+		handle->smack_value = 0;
 		return;
 	}
 
 	fclose(file);
 
-	strcpy(smack_str, buf);
-	*smack_value = strtol(smack_str, (char **)NULL, 16);
+	if (strlen(buf) == 1 && !isalnum(buf[1])) {
+		handle->smack_value = creds_str2smack(buf);
+		sprintf(handle->smack_str, "%08X", handle->smack_value);
 
-	return;
+		if (smackm_to_long_name(handle->labels, handle->smack_str) != NULL) {
+			handle->smack_str[0] = '\0';
+			handle->smack_value = 0;
+		}
+	} else {
+		strcpy(handle->smack_str, buf);
+		handle->smack_value = strtol(handle->smack_str, (char **)NULL, 16);
+	}
 }
 
