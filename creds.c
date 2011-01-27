@@ -391,7 +391,7 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 	{
 	int i, j;
 
-	if (! creds || creds->actual <= 0)
+	if (! creds || creds->actual <= 0 || creds->smack_str[0] == '\0')
 		return CREDS_BAD;
 	
 	for (i = 0; i < creds->actual; i += 1 + CREDS_TLV_L(creds->list[i]))
@@ -442,7 +442,7 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 				break;
 			}
 
-	if (index == 0 && creds->smack_str[0] != '\0')
+	if (index == 0)
 		{
 		*value = creds->smack_value;
 		return CREDS_SMACK;
@@ -535,8 +535,11 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	char str[9];
 	int res;
 
+	if (creds->smack_str[0] == '\0')
+		return 0;
+
 	res = creds_have_p(creds, type, value);
-	if (res || type != CREDS_SMACK || creds->smack_str[0] == '\0')
+	if (res || type != CREDS_SMACK)
 		return res;
 
 	sprintf(str, "%08X", value);
@@ -554,7 +557,10 @@ int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
 	if (! creds)
 		return 0;
 
-	if (type == CREDS_SMACK && creds->smack_str[0] != '\0')
+	if (creds->smack_str[0] == '\0')
+		return 0;
+
+	if (type == CREDS_SMACK)
 		return value == creds->smack_value;
 
 	item = find_value(type, creds);
