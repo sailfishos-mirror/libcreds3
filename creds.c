@@ -798,7 +798,7 @@ inline int is_short_name(char *buf)
 		return 0;
 
 	for (i = 0; i < 8; i++)
-		if (!isxidigit(buf[i]))
+		if (!isxdigit(buf[i]))
 			return 0;
 
 	return 1;
@@ -838,12 +838,10 @@ static void creds_get_smack(
 			goto err_out;
 		strcpy(handle->smack_str, buf);
 	} else {
-		printf("%s\n", buf);
 		/* For others, allow them if there is entry in labels database */
 		temp_name = smackm_to_short_name(handle->labels, buf);
 		if (temp_name == NULL)
 			goto err_out;
-		printf("%s\n", temp_name);
 		strcpy(handle->smack_str, temp_name);
 	}
 
