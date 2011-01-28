@@ -377,6 +377,8 @@ long creds_str2creds(const char *credential, creds_value_t *value)
 			if (len == cmplen)
 				return i; /* .. bare prefix special case */
 			credential += cmplen;
+			if (i == CREDS_SMACK)
+				return creds_str2smack(credential, value);
 			*value = creds_typestr2creds(i, credential);
 			return (*value == CREDS_BAD) ? CREDS_BAD : i;
 		}
@@ -388,6 +390,8 @@ long creds_str2creds(const char *credential, creds_value_t *value)
 		/* Numerical typevalue given */
 		if (endptr[2] == 0)
 			return i; /* .. bare (numeric)prefix special case */
+		if (i == CREDS_SMACK)
+			return creds_str2smack(credential, value);
 		*value = creds_typestr2creds(i, endptr+2);
 		return (*value == CREDS_BAD) ? CREDS_BAD : i;
 	}
