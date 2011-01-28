@@ -846,6 +846,7 @@ static void creds_get_smack(
 	}
 
 	handle->smack_value = strtol(handle->smack_str, (char **)NULL, 16);
+	return;
 
 err_out:
 	handle->smack_str[0] = '\0';
