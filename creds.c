@@ -298,20 +298,29 @@ static long creds_str2gid(const char *group)
 	return gid;
 }
 
-static long creds_str2smack(const char *smack_long)
+static long creds_str2smack(const char *credential, creds_value_t *value)
 {
-	uint32_t h;
-	int i, c;
+	SmackmContext ctx;
+	const char *short_name;
+	int len;
 
-	// djb2 based on http://www.cse.yorku.ca/~oz/hash.html
-	h = 5381;
+	ctx = smackm_new(NULL, SMACKM_LABELS_PATH);
+	if (ctx == NULL)
+		return CREDS_BAD;
 
-	for (i = 0; smack_long[i] != '\0'; i++) {
-		c = smack_long[i];
-		h = ((h << 5) + h) + c;
+	/* Return error *always* when caller tries to access
+	 * credential that does not exist in our labels database.
+	 */
+	short_name = smackm_to_short_name(ctx, credential);
+	if (short_name == NULL) {
+		smackm_delete(ctx);
+		return CREDS_BAD;
 	}
 
-	return h;
+	*value = strtol(short_name, (char **)NULL, 16);
+
+	smackm_delete(ctx);
+	return CREDS_SMACK;
 }
 
 static long creds_typestr2creds(creds_type_t type, const char *credential)
@@ -327,8 +336,6 @@ static long creds_typestr2creds(creds_type_t type, const char *credential)
 	case CREDS_GID:
 	case CREDS_GRP:
 		return creds_str2gid(credential);
-	case CREDS_SMACK:
-		return creds_str2smack(credential);
 	default:
 		break;
 	}
@@ -391,7 +398,7 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 	{
 	int i, j;
 
-	if (! creds || creds->actual <= 0 || creds->smack_str[0] == '\0')
+	if (! creds || creds->actual <= 0)
 		return CREDS_BAD;
 	
 	for (i = 0; i < creds->actual; i += 1 + CREDS_TLV_L(creds->list[i]))
@@ -535,14 +542,20 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	char str[9];
 	int res;
 
-	if (creds->smack_str[0] == '\0')
-		return 0;
-
 	res = creds_have_p(creds, type, value);
 	if (res || type != CREDS_SMACK)
 		return res;
 
+	if (creds->smack_str[0] == '\0')
+		return 0;
+
 	sprintf(str, "%08X", value);
+
+	/* Return no access *always* when caller tries to access
+	 * credential that does not exist in our labels database.
+	 */
+	if (smackm_to_long_name(creds->labels, str) == NULL)
+		return 0;
 
 	return smack_rule_set_have_access(creds->rules,
 					  creds->smack_str,
@@ -557,11 +570,9 @@ int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
 	if (! creds)
 		return 0;
 
-	if (creds->smack_str[0] == '\0')
-		return 0;
-
 	if (type == CREDS_SMACK)
-		return value == creds->smack_value;
+		return creds->smack_str[0] != '\0' &&
+		       value == creds->smack_value;
 
 	item = find_value(type, creds);
 	switch (type)
@@ -677,32 +688,22 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	SmackmContext ctx;
 	char short_name[9];
 	const char *long_name;
-	char tmp[2];
 	int len;
-	int i;
-
-	tmp[1] = '\0';
-	for (i = 0; i < 256; i++) {
-		if (isalnum(i))
-			continue;
-		tmp[0] = i;
-		if (creds_str2smack(tmp) == value) {
-			if (size < 2)
-				return -1;
-			buf[0] = i;
-			buf[1] = '\0';
-			return 1;
-		}
-	}
 
 	ctx = smackm_new(NULL, SMACKM_LABELS_PATH);
 	if (ctx == NULL)
 		return -1;
 
 	sprintf(short_name, "%08X", value);
+
+	/* Return error *always* when caller tries to access
+	 * credential that does not exist in our labels database.
+	 */
 	long_name = smackm_to_long_name(ctx, short_name);
-	if (long_name == NULL)
+	if (long_name == NULL) {
+		smackm_delete(ctx);
 		return -1;
+	}
 
 	len = snprintf(buf, size, "%s%s", creds_fixed_types[type].prefix,
 		       long_name);
@@ -785,12 +786,27 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	return handle;
 }
 
+inline int is_short_name(char *buf)
+{
+	int i;
+
+	if (strlen(buf) != 8)
+		return 0;
+
+	for (i = 0; i < 8; i++)
+		if (!isxidigit(buf[i]))
+			return 0;
+
+	return 1;
+}
+
 static void creds_get_smack(
 	const pid_t pid,
 	creds_t handle)
 {
 	FILE *file;
 	char buf[512];
+	const char *temp_name;
 
 	if (pid == 0)
 		snprintf(buf, sizeof(buf), SMACK_PROC_SELF_PATH);
@@ -799,36 +815,35 @@ static void creds_get_smack(
 
 	file = fopen(buf, "r");
 	if (file == NULL) {
-		handle->smack_str[0] = '\0';
-		handle->smack_value = 0;
+		goto err_out;
 		return;
 	}
 
 	if (fgets(buf, sizeof(buf), file) == NULL) {
 		fclose(file);
-		handle->smack_str[0] = '\0';
-		handle->smack_value = 0;
+		goto err_out;
 		return;
 	}
 
 	fclose(file);
 
-	if (strlen(buf) == 1 && !isalnum(buf[1])) {
-		handle->smack_value = creds_str2smack(buf);
-		sprintf(handle->smack_str, "%08X", handle->smack_value);
-
-		if (smackm_to_long_name(handle->labels, handle->smack_str) != NULL) {
-			handle->smack_str[0] = '\0';
-			handle->smack_value = 0;
-		}
-	} else {
+	if (is_short_name(buf)) {
+		/* Short name handling */
+		temp_name = smackm_to_long_name(handle->labels, buf);
+		if (temp_name == NULL)
+			goto err_out;
 		strcpy(handle->smack_str, buf);
-		handle->smack_value = strtol(handle->smack_str, (char **)NULL, 16);
-
-		if (smackm_to_long_name(handle->labels, handle->smack_str) == NULL) {
-			handle->smack_str[0] = '\0';
-			handle->smack_value = 0;
-		}
+	} else {
+		/* For others, allow them if there is entry in labels database */
+		temp_name = smackm_to_short_name(handle->labels, buf);
+		if (temp_name == NULL)
+			goto err_out;
+		strcpy(handle->smack_str, temp_name);
 	}
-}
 
+	handle->smack_value = strtol(handle->smack_str, (char **)NULL, 16);
+
+err_out:
+	handle->smack_str[0] = '\0';
+	handle->smack_value = 0;
+}
