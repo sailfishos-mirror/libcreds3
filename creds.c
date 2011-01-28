@@ -453,7 +453,7 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 				break;
 			}
 
-	if (index == 0)
+	if (index == 0 && creds->smack_str[0] != '\0')
 		{
 		*value = creds->smack_value;
 		return CREDS_SMACK;
@@ -838,10 +838,12 @@ static void creds_get_smack(
 			goto err_out;
 		strcpy(handle->smack_str, buf);
 	} else {
+		printf("%s\n", buf);
 		/* For others, allow them if there is entry in labels database */
 		temp_name = smackm_to_short_name(handle->labels, buf);
 		if (temp_name == NULL)
 			goto err_out;
+		printf("%s\n", temp_name);
 		strcpy(handle->smack_str, temp_name);
 	}
 
