@@ -137,7 +137,7 @@ void creds_free(creds_t creds)
 	if (creds)
 		{
 		smack_rule_set_free(creds->rules);
-		smackm_free(creds->labels);
+		smackman_free(creds->labels);
 		free(creds);
 		}
 	}
@@ -180,7 +180,7 @@ creds_t creds_gettask(pid_t pid)
 			break;
 		}
 
-		handle->labels = smackm_new(NULL, SMACKM_LABELS_PATH);
+		handle->labels = smackman_new(NULL, SMACKM_LABELS_PATH);
 		if (handle->labels == NULL) {
 			creds_free(handle);
 			handle = NULL;
@@ -304,22 +304,22 @@ static long creds_str2smack(const char *credential, creds_value_t *value)
 	const char *short_name;
 	int len;
 
-	ctx = smackm_new(NULL, SMACKM_LABELS_PATH);
+	ctx = smackman_new(NULL, SMACKM_LABELS_PATH);
 	if (ctx == NULL)
 		return CREDS_BAD;
 
 	/* Return error *always* when caller tries to access
 	 * credential that does not exist in our labels database.
 	 */
-	short_name = smackm_to_short_name(ctx, credential);
+	short_name = smackman_to_short_name(ctx, credential);
 	if (short_name == NULL) {
-		smackm_free(ctx);
+		smackman_free(ctx);
 		return CREDS_BAD;
 	}
 
 	*value = strtol(short_name, (char **)NULL, 16);
 
-	smackm_free(ctx);
+	smackman_free(ctx);
 	return CREDS_SMACK;
 }
 
@@ -558,7 +558,7 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	/* Return no access *always* when caller tries to access
 	 * credential that does not exist in our labels database.
 	 */
-	if (smackm_to_long_name(creds->labels, str) == NULL)
+	if (smackman_to_long_name(creds->labels, str) == NULL)
 		return 0;
 
 	return smack_rule_set_have_access(creds->rules,
@@ -694,7 +694,7 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	const char *long_name;
 	int len;
 
-	ctx = smackm_new(NULL, SMACKM_LABELS_PATH);
+	ctx = smackman_new(NULL, SMACKM_LABELS_PATH);
 	if (ctx == NULL)
 		return -1;
 
@@ -703,16 +703,16 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	/* Return error *always* when caller tries to access
 	 * credential that does not exist in our labels database.
 	 */
-	long_name = smackm_to_long_name(ctx, short_name);
+	long_name = smackman_to_long_name(ctx, short_name);
 	if (long_name == NULL) {
-		smackm_free(ctx);
+		smackman_free(ctx);
 		return -1;
 	}
 
 	len = snprintf(buf, size, "%s%s", creds_fixed_types[type].prefix,
 		       long_name);
 
-	smackm_free(ctx);
+	smackman_free(ctx);
 
 	return len;
 }
@@ -766,7 +766,7 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	if (rules == NULL)
 		return NULL;
 
-	labels = smackm_new(NULL, SMACKM_LABELS_PATH);
+	labels = smackman_new(NULL, SMACKM_LABELS_PATH);
 	if (labels == NULL) {
 		smack_rule_set_free(rules);
 		return NULL;
@@ -775,7 +775,7 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
 	if (!handle) {
 		smack_rule_set_free(rules);
-		smackm_free(labels);
+		smackman_free(labels);
 		return NULL;
 	}
 
@@ -833,13 +833,13 @@ static void creds_get_smack(
 
 	if (is_short_name(buf)) {
 		/* Short name handling */
-		temp_name = smackm_to_long_name(handle->labels, buf);
+		temp_name = smackman_to_long_name(handle->labels, buf);
 		if (temp_name == NULL)
 			goto err_out;
 		strcpy(handle->smack_str, buf);
 	} else {
 		/* For others, allow them if there is entry in labels database */
-		temp_name = smackm_to_short_name(handle->labels, buf);
+		temp_name = smackman_to_short_name(handle->labels, buf);
 		if (temp_name == NULL)
 			goto err_out;
 		strcpy(handle->smack_str, temp_name);
