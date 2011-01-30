@@ -136,8 +136,8 @@ void creds_free(creds_t creds)
 #endif
 	if (creds)
 		{
-		smack_rule_set_delete(creds->rules);
-		smackm_delete(creds->labels);
+		smack_rule_set_free(creds->rules);
+		smackm_free(creds->labels);
 		free(creds);
 		}
 	}
@@ -173,7 +173,7 @@ creds_t creds_gettask(pid_t pid)
 #endif
 		handle = new_handle;
 
-		handle->rules = smack_rule_set_new(SMACKM_RULES_PATH, NULL);
+		handle->rules = smack_rule_set_new(SMACKM_LOAD_PATH);
 		if (handle->rules == NULL) {
 			creds_free(handle);
 			handle = NULL;
@@ -313,13 +313,13 @@ static long creds_str2smack(const char *credential, creds_value_t *value)
 	 */
 	short_name = smackm_to_short_name(ctx, credential);
 	if (short_name == NULL) {
-		smackm_delete(ctx);
+		smackm_free(ctx);
 		return CREDS_BAD;
 	}
 
 	*value = strtol(short_name, (char **)NULL, 16);
 
-	smackm_delete(ctx);
+	smackm_free(ctx);
 	return CREDS_SMACK;
 }
 
@@ -705,14 +705,14 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	 */
 	long_name = smackm_to_long_name(ctx, short_name);
 	if (long_name == NULL) {
-		smackm_delete(ctx);
+		smackm_free(ctx);
 		return -1;
 	}
 
 	len = snprintf(buf, size, "%s%s", creds_fixed_types[type].prefix,
 		       long_name);
 
-	smackm_delete(ctx);
+	smackm_free(ctx);
 
 	return len;
 }
@@ -762,20 +762,20 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	SmackmContext labels;
 	creds_t handle;
 
-	rules = smack_rule_set_new(SMACKM_RULES_PATH, NULL);
+	rules = smack_rule_set_new(SMACKM_RULES_PATH);
 	if (rules == NULL)
 		return NULL;
 
 	labels = smackm_new(NULL, SMACKM_LABELS_PATH);
 	if (labels == NULL) {
-		smack_rule_set_delete(rules);
+		smack_rule_set_free(rules);
 		return NULL;
 	}
 
 	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
 	if (!handle) {
-		smack_rule_set_delete(rules);
-		smackm_delete(labels);
+		smack_rule_set_free(rules);
+		smackm_free(labels);
 		return NULL;
 	}
 
