@@ -317,7 +317,7 @@ static long creds_str2smack(const char *credential, creds_value_t *value)
 		return CREDS_BAD;
 	}
 
-	*value = strtol(short_name, (char **)NULL, 16);
+	*value = strtoll(short_name, (char **)NULL, 16);
 
 	smackman_free(ctx);
 	return CREDS_SMACK;
