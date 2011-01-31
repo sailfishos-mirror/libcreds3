@@ -187,6 +187,7 @@ creds_t creds_gettask(pid_t pid)
 			break;
 		}
 
+
 		handle->list_size = actual;
 		handle->actual = actual =
 			fallback_get(pid, handle->list, handle->list_size);
@@ -317,7 +318,7 @@ static long creds_str2smack(const char *credential, creds_value_t *value)
 		return CREDS_BAD;
 	}
 
-	*value = strtoll(short_name, (char **)NULL, 16);
+	*value = strtoll(short_name + 1, (char **)NULL, 16);
 
 	smackman_free(ctx);
 	return CREDS_SMACK;
@@ -543,7 +544,7 @@ int creds_find(const creds_t creds, const char *pattern, char *buf, size_t size)
 
 int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t value, const char *access_type)
 {
-	char str[9];
+	char str[10];
 	int res;
 
 	res = creds_have_p(creds, type, value);
@@ -553,7 +554,7 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	if (creds->smack_str[0] == '\0')
 		return 0;
 
-	sprintf(str, "%08X", value);
+	sprintf(str, "S%08X", value);
 
 	/* Return no access *always* when caller tries to access
 	 * credential that does not exist in our labels database.
@@ -690,7 +691,7 @@ static int creds_uid2str(creds_type_t type, creds_value_t value, char *buf, size
 static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, size_t size)
 {
 	SmackmanContext ctx;
-	char short_name[9];
+	char short_name[10];
 	const char *long_name;
 	int len;
 
@@ -698,7 +699,7 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	if (ctx == NULL)
 		return -1;
 
-	sprintf(short_name, "%08X", value);
+	sprintf(short_name, "S%08X", value);
 
 	/* Return error *always* when caller tries to access
 	 * credential that does not exist in our labels database.
@@ -845,7 +846,7 @@ static void creds_get_smack(
 		strcpy(handle->smack_str, temp_name);
 	}
 
-	handle->smack_value = strtol(handle->smack_str, (char **)NULL, 16);
+	handle->smack_value = strtoll(handle->smack_str + 1, (char **)NULL, 16);
 	return;
 
 err_out:
