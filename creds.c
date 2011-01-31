@@ -55,7 +55,7 @@
 
 #define SMACK_PROC_PATH "/proc/%d/attr/current"
 #define SMACK_PROC_SELF_PATH "/proc/self/attr/current"
-#define SMACK_LABEL_MAX_LEN 24
+#define SMACK_LABEL_SIZE 24
 
 static const int initial_list_size =
 	2 + /* uid */
@@ -67,7 +67,7 @@ static const int initial_list_size =
 struct _creds_struct
 	{
 	long actual;		/* Actual list items */
-	char smack_str[SMACK_LABEL_MAX_LEN];
+	char smack_str[SMACK_LABEL_SIZE];
 	creds_value_t smack_value;
 	SmackRuleSet rules;
 	SmackmanContext labels;
@@ -186,7 +186,6 @@ creds_t creds_gettask(pid_t pid)
 			handle = NULL;
 			break;
 		}
-
 
 		handle->list_size = actual;
 		handle->actual = actual =
@@ -318,7 +317,7 @@ static long creds_str2smack(const char *credential, creds_value_t *value)
 		return CREDS_BAD;
 	}
 
-	*value = strtoll(short_name + 1, (char **)NULL, 16);
+	*value = strtoll(short_name + 2, (char **)NULL, 16);
 
 	smackman_free(ctx);
 	return CREDS_SMACK;
@@ -544,7 +543,7 @@ int creds_find(const creds_t creds, const char *pattern, char *buf, size_t size)
 
 int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t value, const char *access_type)
 {
-	char str[10];
+	char str[SMACK_LABEL_SIZE];
 	int res;
 
 	res = creds_have_p(creds, type, value);
@@ -554,7 +553,7 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	if (creds->smack_str[0] == '\0')
 		return 0;
 
-	sprintf(str, "S%08X", value);
+	sprintf(str, "S-%08X", value);
 
 	/* Return no access *always* when caller tries to access
 	 * credential that does not exist in our labels database.
@@ -691,7 +690,7 @@ static int creds_uid2str(creds_type_t type, creds_value_t value, char *buf, size
 static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, size_t size)
 {
 	SmackmanContext ctx;
-	char short_name[10];
+	char short_name[SMACK_LABEL_SIZE];
 	const char *long_name;
 	int len;
 
@@ -699,7 +698,7 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	if (ctx == NULL)
 		return -1;
 
-	sprintf(short_name, "S%08X", value);
+	sprintf(short_name, "S-%08X", value);
 
 	/* Return error *always* when caller tries to access
 	 * credential that does not exist in our labels database.
@@ -846,7 +845,7 @@ static void creds_get_smack(
 		strcpy(handle->smack_str, temp_name);
 	}
 
-	handle->smack_value = strtoll(handle->smack_str + 1, (char **)NULL, 16);
+	handle->smack_value = strtoll(handle->smack_str + 2, (char **)NULL, 16);
 	return;
 
 err_out:
