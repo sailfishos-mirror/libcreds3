@@ -70,7 +70,7 @@ struct _creds_struct
 	char smack_str[SMACK_LABEL_MAX_LEN];
 	creds_value_t smack_value;
 	SmackRuleSet rules;
-	SmackmContext labels;
+	SmackmanContext labels;
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
 #endif
@@ -173,14 +173,14 @@ creds_t creds_gettask(pid_t pid)
 #endif
 		handle = new_handle;
 
-		handle->rules = smack_rule_set_new(SMACKM_LOAD_PATH);
+		handle->rules = smack_rule_set_new(SMACKMAN_LOAD_PATH);
 		if (handle->rules == NULL) {
 			creds_free(handle);
 			handle = NULL;
 			break;
 		}
 
-		handle->labels = smackman_new(NULL, SMACKM_LABELS_PATH);
+		handle->labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
 		if (handle->labels == NULL) {
 			creds_free(handle);
 			handle = NULL;
@@ -300,11 +300,11 @@ static long creds_str2gid(const char *group)
 
 static long creds_str2smack(const char *credential, creds_value_t *value)
 {
-	SmackmContext ctx;
+	SmackmanContext ctx;
 	const char *short_name;
 	int len;
 
-	ctx = smackman_new(NULL, SMACKM_LABELS_PATH);
+	ctx = smackman_new(NULL, SMACKMAN_LABELS_PATH);
 	if (ctx == NULL)
 		return CREDS_BAD;
 
@@ -689,12 +689,12 @@ static int creds_uid2str(creds_type_t type, creds_value_t value, char *buf, size
 
 static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, size_t size)
 {
-	SmackmContext ctx;
+	SmackmanContext ctx;
 	char short_name[9];
 	const char *long_name;
 	int len;
 
-	ctx = smackman_new(NULL, SMACKM_LABELS_PATH);
+	ctx = smackman_new(NULL, SMACKMAN_LABELS_PATH);
 	if (ctx == NULL)
 		return -1;
 
@@ -759,14 +759,14 @@ const uint32_t *creds_export(creds_t creds, size_t *length)
 creds_t creds_import(const uint32_t *list, size_t length)
 {
 	SmackRuleSet rules;
-	SmackmContext labels;
+	SmackmanContext labels;
 	creds_t handle;
 
-	rules = smack_rule_set_new(SMACKM_RULES_PATH);
+	rules = smack_rule_set_new(SMACKMAN_RULES_PATH);
 	if (rules == NULL)
 		return NULL;
 
-	labels = smackman_new(NULL, SMACKM_LABELS_PATH);
+	labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
 	if (labels == NULL) {
 		smack_rule_set_free(rules);
 		return NULL;
