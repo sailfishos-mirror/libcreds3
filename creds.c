@@ -57,6 +57,11 @@
 #define SMACK_PROC_SELF_PATH "/proc/self/attr/current"
 #define SMACK_LABEL_SIZE 24
 
+#define SHORT_LABEL_PREFIX "SM-"
+#define SHORT_LABEL_PREFIX_LEN 3
+#define SHORT_LABEL_NAME_LEN 8
+#define SHORT_LABEL_LEN (SHORT_LABEL_PREFIX_LEN + SHORT_LABEL_NAME_LEN)
+
 static const int initial_list_size =
 	2 + /* uid */
 	2 + /* gid */
@@ -317,7 +322,8 @@ static long creds_str2smack(const char *credential, creds_value_t *value)
 		return CREDS_BAD;
 	}
 
-	*value = strtoll(short_name + 2, (char **)NULL, 16);
+	*value = strtoll(short_name + SHORT_LABEL_PREFIX_LEN,
+			 (char **)NULL, 16);
 
 	smackman_free(ctx);
 	return CREDS_SMACK;
@@ -553,7 +559,7 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	if (creds->smack_str[0] == '\0')
 		return 0;
 
-	sprintf(str, "S-%08X", value);
+	sprintf(str, SHORT_LABEL_PREFIX "%08X", value);
 
 	/* Return no access *always* when caller tries to access
 	 * credential that does not exist in our labels database.
@@ -698,7 +704,7 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	if (ctx == NULL)
 		return -1;
 
-	sprintf(short_name, "S-%08X", value);
+	sprintf(short_name, SHORT_LABEL_PREFIX "%08X", value);
 
 	/* Return error *always* when caller tries to access
 	 * credential that does not exist in our labels database.
@@ -845,7 +851,8 @@ static void creds_get_smack(
 		strcpy(handle->smack_str, temp_name);
 	}
 
-	handle->smack_value = strtoll(handle->smack_str + 2, (char **)NULL, 16);
+	handle->smack_value = strtoll(handle->smack_str + SHORT_LABEL_PREFIX_LEN,
+				      (char **)NULL, 16);
 	return;
 
 err_out:
