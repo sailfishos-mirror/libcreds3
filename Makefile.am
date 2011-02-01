@@ -16,6 +16,9 @@ creds_test_LDADD = $(top_builddir)/.libs/libcreds-3.0.la
 creds_get_SOURCES = creds-get.c
 creds_get_LDADD = $(top_builddir)/.libs/libcreds-3.0.la
 
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = libcreds-3.0.pc
+
 cap_names.h : Makefile /usr/include/linux/capability.h
 	perl capnames.pl < /usr/include/linux/capability.h > cap_names.h
 

@@ -28,4 +28,4 @@ AC_PROG_MAKE_SET
 PKG_CHECK_MODULES([LIBSMACK_1_0], [libsmack-1.0 >= 1.0.0])
 PKG_CHECK_MODULES([LIBSMACKMAN_1_0], [libsmackman-1.0 >= 1.0.0])
 
-AC_OUTPUT(Makefile dox/Makefile)
+AC_OUTPUT(Makefile dox/Makefile libcreds-3.0.pc)
