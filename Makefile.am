@@ -4,9 +4,10 @@ bin_PROGRAMS = creds-get creds-test
 
 nobase_include_HEADERS = sys/creds.h
 
-libcreds_la_LDFLAGS = -version-info 3:0
+libcreds_la_LDFLAGS = -version-info 1:0
 libcreds_la_SOURCES = creds.c credsctl.c cap_names.h
-libcreds_la_LIBADD = -lsmack -lsmackman
+libcreds_la_LIBADD = -lsmackman @LIBSMACK_1_0_LIBS@
+libcreds_la_CFLAGS = @LIBSMACK_1_0_CFLAGS@
 
 creds_test_SOURCES = creds-test.c
 creds_test_LDADD = -L.libs -lcreds

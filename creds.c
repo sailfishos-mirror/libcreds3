@@ -43,7 +43,7 @@
 #include <grp.h>
 #include <sys/socket.h>
 #include <assert.h>
-#include <sys/smack.h>
+#include <smack.h>
 #include <sys/smackman.h>
 
 #include "sys/creds.h"
