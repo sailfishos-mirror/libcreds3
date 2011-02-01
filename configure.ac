@@ -24,9 +24,8 @@ AC_SUBST([DOXYGEN], [$DOXYGEN])
 
 AC_CONFIG_MACRO_DIR([m4])
 AC_PROG_MAKE_SET
-AC_CHECK_HEADERS(linux/aegis/creds.h)
-AC_CHECK_HEADERS(sys/smackman.h)
 
 PKG_CHECK_MODULES([LIBSMACK_1_0], [libsmack-1.0 >= 1.0.0])
+PKG_CHECK_MODULES([LIBSMACKMAN_1_0], [libsmackman-1.0 >= 1.0.0])
 
 AC_OUTPUT(Makefile dox/Makefile)

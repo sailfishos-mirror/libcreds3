@@ -44,7 +44,7 @@
 #include <sys/socket.h>
 #include <assert.h>
 #include <smack.h>
-#include <sys/smackman.h>
+#include <smackman.h>
 
 #include "sys/creds.h"
 
