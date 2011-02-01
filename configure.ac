@@ -1,5 +1,5 @@
 AC_PREREQ(2.59)
-AC_INIT([libcreds3],[1.0])
+AC_INIT([libcreds3],[3.0.0])
 AM_INIT_AUTOMAKE(gnu 0.0.1 no-define dist-bzip2)
 AC_PROG_CC
 AC_PROG_CXX
