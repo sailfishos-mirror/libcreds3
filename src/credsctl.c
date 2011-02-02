@@ -236,9 +236,6 @@ static int get_cap_bits(struct stream_buf *buf, __u32 *bits, size_t max_bits)
 	return 0; /* Success */
 }
 
-/**
- * Since this is now used directly from creds.c make the function public
- */
 int fallback_get(pid_t pid, __u32 *list, size_t list_length)
 {
 	struct stream_buf buf;
@@ -342,7 +339,7 @@ out:
 }
 
 
-static long fallback_str2creds(const char *str, long *value)
+long fallback_str2creds(const char *str, long *value)
 {
 	static const struct {const char *const str; size_t len; } prefix = CAP_STRING("CAP::");
 
@@ -367,7 +364,7 @@ static long fallback_str2creds(const char *str, long *value)
 	return CREDS_BAD;
 }
 
-static long fallback_creds2str(int type, long value, char *str, size_t str_len)
+long fallback_creds2str(int type, long value, char *str, size_t str_len)
 {
 	if (type == CREDS_CAP) {
 		if (value >= 0 &&
@@ -380,75 +377,3 @@ static long fallback_creds2str(int type, long value, char *str, size_t str_len)
 	return -1;
 }
 
-
-#if HAVE_LINUX_AEGIS_CREDS_H
-
-static const char *const policy_file = "/sys/kernel/security/" CREDS_SECURITY_DIR "/" CREDS_SECURITY_FILE;
-
-long creds_kstr2creds(const char *str, long *value)
-{
-	const int fd = open(policy_file, O_RDONLY);
-	if (fd >= 0) {
-	        union creds_ioc_arg arg = {
-			.str.type = -1,
-			.str.length = strlen (str),
-			.str.value = value,
-			.str.name = (char *)str,
-		};
-		const long result = ioctl(fd, SIOCCREDS_STR2CREDS, &arg);
-		close(fd);
-		return result;
-	}
-	return fallback_str2creds(str, value);
-}
-
-long creds_kcreds2str(int type, long value, char *str, size_t str_len)
-{
-	const int fd = open(policy_file, O_RDONLY);
-	if (fd >= 0) {
-		union creds_ioc_arg arg = {
-			.str.type = type,
-			.str.length = str_len,
-			.str.value = &value,
-			.str.name = str,
-		};
-		const long result = ioctl(fd, SIOCCREDS_CREDS2STR, &arg);
-		close(fd);
-		return result;
-	}
-	return fallback_creds2str(type, value, str, str_len);
-}
-
-long creds_kget(pid_t pid, __u32 *list, size_t list_length)
-{
-	const int fd = open(policy_file, O_RDONLY);
-	if (fd >= 0) {
-		union creds_ioc_arg arg = {
-			.list.pid = pid,
-			.list.length = list_length,
-			.list.items = list,
-		};
-		const long result = ioctl(fd, SIOCCREDS_GET, &arg);
-		close(fd);
-		return result;
-	}
-	return fallback_get(pid, list, list_length);
-}
-#else
-
-long creds_kget(pid_t pid, __u32 *list, size_t list_length)
-{
-	return fallback_get(pid, list, list_length);
-}
-
-long creds_kstr2creds(const char *str, long *value)
-{
-	return fallback_str2creds(str, value);
-}
-
-long creds_kcreds2str(int type, long value, char *str, size_t str_len)
-{
-	return fallback_creds2str(type, value, str, str_len);
-}
-
-#endif

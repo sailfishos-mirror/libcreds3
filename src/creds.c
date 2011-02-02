@@ -359,7 +359,7 @@ long creds_str2creds(const char *credential, creds_value_t *value)
 	len = strlen(credential);
 
 	/* See, if kernel translates it */
-	i = creds_kstr2creds(credential, value);
+	i = fallback_str2creds(credential, value);
 	if (i >= 0)
 		return i; /* ..yes, kernel did it! */
 
@@ -715,7 +715,7 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 
 int creds_creds2str(creds_type_t type, creds_value_t value, char *buf, size_t size)
 {
-	long ret = creds_kcreds2str(type, value, buf, size);
+	long ret = fallback_creds2str(type, value, buf, size);
 	if (ret >= 0)
 		return ret;
 

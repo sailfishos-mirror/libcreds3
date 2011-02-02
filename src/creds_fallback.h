@@ -70,11 +70,8 @@ enum {
 #define CREDS_TLV_T(v) ((v) & 0xffff)
 #define CREDS_TLV_L(v) ((unsigned)(v) >> 16)
 
-long creds_kstr2creds(const char *str, long *value);
-long creds_kget(pid_t pid, __u32 *list, size_t list_length);
-long creds_kcreds2str(int type, long value, char *str, size_t str_len);
-
-/* Exposed fallback function for userspace-only functionality */
+long fallback_str2creds(const char *str, long *value);
+long fallback_creds2str(int type, long value, char *str, size_t str_len);
 int fallback_get(pid_t pid, __u32 *list, size_t list_length);
 
 #endif
