@@ -7,5 +7,5 @@ Name: libcreds-3.0
 Description: Library for querying and manipulating task credentials.
 Requires:
 Version: @PACKAGE_VERSION@
-Libs: -L${libdir} -lcreds-3.0
+Libs: -L${libdir} -lcreds
 Cflags: -I${includedir}/libcreds-3.0
