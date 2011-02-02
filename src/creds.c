@@ -21,10 +21,6 @@
  * Author: Markku Savela
  */
 
-/*
- * This implementation of libcreds assumes existence of the credpol kernel
- * module.
- */
 #define _ISOC99_SOURCE /* ..to get isblank from ctypes.h */
 #define _GNU_SOURCE /* ..to get struct ucred from sys/socket.h */
 
@@ -45,12 +41,7 @@
 #include <assert.h>
 #include <smack.h>
 #include <smackman.h>
-
-#include "sys/creds.h"
-
-/*
- * 'creds' is pure information retrieval API
- */
+#include "creds.h"
 #include "creds_fallback.h"
 
 #define SMACK_PROC_PATH "/proc/%d/attr/current"
@@ -67,7 +58,6 @@ static const int initial_list_size =
 	2 + /* gid */
 	3 + /* caps */
 	33; /* supplementary groups */
-
 
 struct _creds_struct
 	{

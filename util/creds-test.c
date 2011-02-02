@@ -23,7 +23,7 @@
 #include <stdlib.h>
 #include <err.h>
 #include <ctype.h>
-#include <sys/creds.h>
+#include <creds.h>
 
 /*
  * A simple test program to check the basic library functionality
