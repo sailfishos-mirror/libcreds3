@@ -3,9 +3,9 @@ exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
 
-Name: libcreds-3.0
-Description: Library for querying and manipulating task credentials.
+Name: @PACKAGE_NAME@
+Description: Library for querying and enforcing task credentials.
 Requires:
 Version: @PACKAGE_VERSION@
 Libs: -L${libdir} -lcreds
-Cflags: -I${includedir}/libcreds-3.0
+Cflags: -I${includedir}/libcreds3
