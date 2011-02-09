@@ -786,15 +786,18 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	return handle;
 }
 
-inline int is_short_name(char *buf)
+inline int is_short_name(const char *buf)
 {
 	int i;
+	const char *ptr;
 
-	if (strlen(buf) != 8)
+	if (strlen(buf) != SHORT_LABEL_LEN)
 		return 0;
 
-	for (i = 0; i < 8; i++)
-		if (!isxdigit(buf[i]))
+	ptr = &buf[SHORT_LABEL_PREFIX_LEN];
+
+	for (i = 0; i < SHORT_LABEL_NAME_LEN; i++)
+		if (!isxdigit(ptr[i]))
 			return 0;
 
 	return 1;

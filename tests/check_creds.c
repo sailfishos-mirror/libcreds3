@@ -30,6 +30,7 @@
 #include <syscall.h>
 #include <unistd.h>
 #include <smackman.h>
+#include <creds_fallback.h>
 
 START_TEST(test_str2creds)
 {
@@ -72,6 +73,80 @@ START_TEST(test_str2creds)
 }
 END_TEST
 
+START_TEST(test_gettask)
+{
+	SmackmanContext ctx;
+	creds_value_t value;
+	creds_type_t type;
+	int ret;
+	char buf[200];
+	mode_t mode;
+	FILE *fp;
+	const char *sn;
+	creds_t cr;
+	int index;
+	int ok = 0;
+
+	mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+
+	unlink("labels");
+	creat("labels", mode);
+
+	unlink("load");
+	creat("load", mode);
+
+	ctx = smackman_new("load", "labels");
+	ck_assert_msg(ctx != NULL, "SmackmanContext not created for non-existing labels file");
+	if (ctx == NULL)
+		return;
+
+	smackman_add(ctx, "Apple", "Orange", "rwx");
+	smackman_add(ctx, "Plum", "Peach", "rx");
+	smackman_add(ctx, "Banana", "Peach", "xa");
+
+	smackman_save(ctx);
+	smackman_free(ctx);
+
+	ctx = smackman_new("load", "labels");
+	ck_assert_msg(ctx != NULL, "SmackmanContext not created for non-existing labels file");
+	if (ctx == NULL)
+		return;
+
+	fp = fopen("/proc/self/attr/current", "w");
+	sn = smackman_to_short_name(ctx, "Banana");
+	fprintf(fp, "%s", sn);
+	fclose(fp);
+
+	smackman_free(ctx);
+
+	cr = creds_gettask(0);
+	ck_assert_msg(cr != NULL, "Couldn't get creds for self.");
+	if (cr == NULL)
+		return;
+
+	for (index = 0; (type = creds_list(cr, index, &value)) != CREDS_BAD; ++index) {
+		if (type != CREDS_SMACK)
+			continue;
+
+		ck_assert_msg(!ok, "Duplicate security context.");
+		if (ok) {
+			ok = 0;
+			break;
+		}
+
+		(void)creds_creds2str(type, value, buf, sizeof(buf));
+		buf[sizeof(buf)-1] = 0;
+		ok =  strcmp("SMACK::Banana", buf) == 0;
+		ck_assert_msg(ok, "Invalid long name %s", buf);
+		if (!ok)
+			break;
+	}
+
+	creds_free(cr);
+	ck_assert_msg(ok, "Security context not succesfully retrieved.");
+}
+END_TEST
+
 Suite *ruleset_suite (void)
 {
 	Suite *s;
@@ -90,15 +165,11 @@ Suite *ruleset_suite (void)
 	if (system("mount -n --bind . /etc/smack") != 0)
 		return NULL;
 
-	fprintf(stderr, "virtual /etc/smack:\n");
-	system("ls -1 /etc/smack 1>&2");
-	fprintf(stderr, "virtual /smack:\n");
-	system("ls -1 /smack 1>&2");
-
 	s = suite_create("Creds");
 
 	tc_core = tcase_create("Creds");
 	tcase_add_test(tc_core, test_str2creds);
+	tcase_add_test(tc_core, test_gettask);
 	suite_add_tcase(s, tc_core);
 
 	return s;
