@@ -27,10 +27,12 @@
 #include <sys/types.h>
 #include <linux/types.h>
 
-#ifdef HAVE_LINUX_AEGIS_CREDS_H
-#include <linux/aegis/creds.h>
-#include <linux/aegis/credsctl.h>
-#else
+#include <smackman.h>
+
+#define SMACK_SHORT_PREFIX "SM-"
+#define SMACK_SHORT_PREFIX_LEN 3
+#define SMACK_SHORT_NAME_LEN 8
+#define SMACK_SHORT_LEN (SMACK_SHORT_PREFIX_LEN + SMACK_SHORT_NAME_LEN)
 
 /* Use /proc/<pid> fallback hack, if kernel does
    not support creds api */
@@ -72,7 +74,6 @@ enum {
 
 long fallback_str2creds(const char *str, long *value);
 long fallback_creds2str(int type, long value, char *str, size_t str_len);
-int fallback_get(pid_t pid, __u32 *list, size_t list_length);
+int fallback_get(pid_t pid, SmackmanContext ctx, __u32 *list, size_t list_length);
 
-#endif
 #endif

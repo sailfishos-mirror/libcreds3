@@ -236,11 +236,34 @@ static int get_cap_bits(struct stream_buf *buf, __u32 *bits, size_t max_bits)
 	return 0; /* Success */
 }
 
-int fallback_get(pid_t pid, __u32 *list, size_t list_length)
+inline int is_smack_short(const char *buf)
+{
+	int i;
+	const char *ptr;
+
+	if (strlen(buf) != SMACK_SHORT_LEN)
+		return 0;
+
+	if (strncmp(buf, "SM-", 3) != 0)
+		return 0;
+
+	ptr = &buf[SMACK_SHORT_PREFIX_LEN];
+
+	for (i = 0; i < SMACK_SHORT_NAME_LEN; i++)
+		if (!isxdigit(ptr[i]))
+			return 0;
+
+	return 1;
+}
+
+int fallback_get(pid_t pid, SmackmanContext ctx, __u32 *list, size_t list_length)
 {
 	struct stream_buf buf;
 	size_t index = 0;
 	int value;
+	int room;
+	int len;
+	const char *smack_ptr;
 
 	buf.head = 0;
 	buf.tail = 0;
@@ -328,8 +351,49 @@ int fallback_get(pid_t pid, __u32 *list, size_t list_length)
 	}
 	if (buf.fd >= 0)
 		close(buf.fd);
+
+	if (pid)
+		snprintf(buf.data, sizeof(buf.data), "/proc/%d/attr/current", pid);
+	else
+		strncpy(buf.data, "/proc/self/attr/current", sizeof(buf.data));
+	buf.fd = open(buf.data, O_RDONLY);
+	if (buf.fd < 0)
+		return -errno;
+
+	buf.tail = 0;
+	for (;;) {
+		room = sizeof(buf.data) - buf.tail;
+		len = read(buf.fd, buf.data + buf.tail, room);
+		if (len <= 0)
+			break;
+		buf.tail += len;
+		if (buf.tail >= (sizeof(buf.data) - 1)) {
+			buf.tail = 0;
+			break;
+		}
+	}
+	buf.data[buf.tail] = '\0';
+	close(buf.fd);
+
+	if (is_smack_short(buf.data))
+		smack_ptr = smackman_to_long_name(ctx, buf.data);
+	else
+		smack_ptr = smackman_to_short_name(ctx, buf.data);
+
+	if (smack_ptr != NULL) {
+		value = strtoll(smack_ptr + SMACK_SHORT_PREFIX_LEN,
+				(char **)NULL, 16);
+
+		index += 2;
+		if (index <= list_length) {
+			list[0] = CREDS_TL(CREDS_SMACK, 1);
+			list[1] = value;
+			list += 2;
+		}
+	}
+
 	return index;
-	
+
 out:
 	/* Detetected an error, do not silently return incomplete data! */
 
