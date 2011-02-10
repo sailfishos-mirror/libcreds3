@@ -371,34 +371,25 @@ creds_t creds_gettask(pid_t pid)
 	long actual = initial_list_size;
 	int maxtries = 4;
 
-	do {
-		creds_t new_handle = (creds_t)realloc(handle, sizeof(*handle) + actual * sizeof(handle->list[0]));
-		if (! new_handle) {
-			/* Memory allocation failure */
-			creds_free(handle);
-			handle = NULL;
-			break;
-		}
+	handle = (creds_t)calloc(1, sizeof(struct _creds_struct) + actual * sizeof(__u32));
+	handle->list_size = initial_list_size;
 
+	handle->rules = smack_rule_set_new(SMACKMAN_LOAD_PATH);
+	if (handle->rules == NULL)
+		goto out;
+	handle->labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
+	if (handle->labels == NULL)
+		goto out;
+
+	do {
+		creds_t new_handle = (creds_t)realloc(handle, sizeof(struct _creds_struct) + actual * sizeof(__u32));
+		if (new_handle == NULL)
+			goto out;
 #ifdef CREDS_AUDIT_LOG
 		if (handle == NULL)
 			creds_audit_init(new_handle, pid);
 #endif
 		handle = new_handle;
-
-		handle->rules = smack_rule_set_new(SMACKMAN_LOAD_PATH);
-		if (handle->rules == NULL) {
-			creds_free(handle);
-			handle = NULL;
-			break;
-		}
-
-		handle->labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
-		if (handle->labels == NULL) {
-			creds_free(handle);
-			handle = NULL;
-			break;
-		}
 
 		handle->list_size = actual;
 		handle->actual = actual =
@@ -415,6 +406,9 @@ creds_t creds_gettask(pid_t pid)
 	} while (handle->list_size < actual && --maxtries > 0);
 
 	return handle;
+out:
+	creds_free(handle);
+	return NULL;
 }
 
 static int numeric_p(const char *str, long *value)
@@ -1028,29 +1022,19 @@ const uint32_t *creds_export(creds_t creds, size_t *length)
 
 creds_t creds_import(const uint32_t *list, size_t length)
 {
-	SmackRuleSet rules;
-	SmackmanContext labels;
 	creds_t handle;
 
-	rules = smack_rule_set_new(SMACKMAN_RULES_PATH);
-	if (rules == NULL)
-		return NULL;
-
-	labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
-	if (labels == NULL) {
-		smack_rule_set_free(rules);
-		return NULL;
-	}
-
 	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
-	if (!handle) {
-		smack_rule_set_free(rules);
-		smackman_free(labels);
+	if (!handle)
 		return NULL;
-	}
 
-	handle->rules = rules;
-	handle->labels = labels;
+	handle->rules = smack_rule_set_new(SMACKMAN_LOAD_PATH);
+	if (handle->rules == NULL)
+		goto out;
+
+	handle->labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
+	if (handle->labels == NULL)
+		goto out;
 
 	handle->actual = handle->list_size = length;
 	memcpy(handle->list, list, length * sizeof(handle->list[0]));
@@ -1058,5 +1042,8 @@ creds_t creds_import(const uint32_t *list, size_t length)
 	creds_audit_init(handle, -1);
 #endif
 	return handle;
+out:
+	creds_free(handle);
+	return NULL;
 }
 
