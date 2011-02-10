@@ -18,7 +18,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA
  *
- * Author: Markku Savela
+ * Authors:
+ * Markku Savela (libcreds2)
+ * Jarkko Sakkinen (migration to MeeGo and Smack)
  */
 
 #define _ISOC99_SOURCE /* ..to get isblank from ctypes.h */
