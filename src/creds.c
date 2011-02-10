@@ -128,13 +128,231 @@ int creds_set(const creds_t creds)
 	return -1;
 }
 
+static void reverse(__u32 *base, int count)
+{
+	int i;
+	for (i = 0; i < count; )
+		{
+		__u32 tmp = base[--count];
+		base[count] = base[i];
+		base[i++] = tmp;
+		}
+}
+
+/*
+ * Change the "payload size" of the item.
+ *
+ * @creds The pointer to creds handle.
+ * @item Index the item to modify (T,L) or creds->actual
+ * @type Type of the item
+ * @count The new size (L) of the item.
+ *
+ * @return index (>= 0) of item, -1 on failure.
+ *
+ * This function may need to reallocate the creds content, thus
+ * beware that content of the handle (*creds) can change.
+ * NOTE SPECIALLY, that the change can also have occurred, even
+ * if the actual operation fails!
+ */
+static int creds_adjust(creds_t *creds, int item, int type, size_t count)
+{
+	creds_t handle = *creds;
+	int expand, i;
+
+	assert(creds != NULL);
+
+	if (item < handle->actual)
+		{
+		/* Existing entry must be modified */
+		const size_t item_len = CREDS_TLV_L(handle->list[item]) + 1;
+		const size_t rotate = item + item_len;
+		expand = count - CREDS_TLV_L(handle->list[item]);
+		if (expand == 0)
+			return item; /* Nothing to do */
+		if (rotate < handle->actual)
+			{
+			/* The entry is not the last item in
+			 * creds, make it last ...
+			 */
+			reverse(handle->list + rotate, handle->actual - rotate);
+			reverse(handle->list + item, item_len);
+			reverse(handle->list + item, handle->actual - item);
+			item = handle->actual - item_len;
+			}
+		}
+	else
+		{
+		/* No previous entry, create a new TL header */
+		if (count == 0)
+			return -1; /* ..don't create empty TLV */
+		item = handle->actual;
+		if (handle->list_size == handle->actual)
+			{
+			/* No room at all, reallocate the handle */
+			const size_t new_size = handle->actual + count + 1;
+			handle = (creds_t)realloc(handle, sizeof(*handle) + new_size * sizeof(handle->list[0]));
+			if (!handle)
+				return -1;/* Memory allocation failure */
+			/* Success */
+			handle->list_size = new_size;
+			*creds = handle;
+			}
+		handle->list[item] = CREDS_TL(type, 0);
+		handle->actual += 1;
+		expand = count;
+		}
+	/* Add expand items to the current item */
+	if (handle->actual + expand > handle->list_size)
+		{
+		/* No room for added values */
+		const size_t new_size = handle->actual + expand;
+		handle = (creds_t)realloc(handle, sizeof(*handle) + new_size * sizeof(handle->list[0]));
+		if (!handle)
+			return -1;/* Memory allocation failure */
+		/* Success */
+		handle->list_size = new_size;
+		*creds = handle;
+		}
+	handle->list[item] = CREDS_TL(CREDS_TLV_T(handle->list[item]), CREDS_TLV_L(handle->list[item]) + expand);
+	if (CREDS_TLV_L(handle->list[item]) == 0)
+		{
+		/* Remove the item fully */
+		handle->actual = item;
+		return -1;
+		}
+	handle->actual += expand;
+
+	/* Zero out new values at end */
+	for (i = item + CREDS_TLV_L(handle->list[item]); --expand >= 0; --i)
+		handle->list[i] = 0;
+	return item;
+}
+
 int creds_add(creds_t *creds, creds_type_t type, creds_value_t value)
 {
+	int i, j;
+	creds_t handle;
+	if (!creds)
+		return -1;
+	handle = *creds;
+	if (!handle)
+		{
+		/* Create an empty creds structure */
+		handle = (creds_t)malloc(sizeof(*handle) + initial_list_size * sizeof(handle->list[0]));
+		if (!handle)
+			return -1; /* Failed */
+#ifdef CREDS_AUDIT_LOG
+		creds_audit_init(handle, -1);
+#endif
+		handle->list_size = initial_list_size;
+		handle->actual = 0;
+		*creds = handle;
+		}
+
+	for (i = 0; i < handle->actual; i += 1 + CREDS_TLV_L(handle->list[i]))
+		if (CREDS_TLV_T(handle->list[i]) == type)
+			break;
+	assert(i <= handle->actual);
+	/* i points to found item or i == handle->actual, if not found */
+
+	switch (type)
+		{
+		case CREDS_CAP:
+			i = creds_adjust(creds, i, CREDS_CAP, 2);
+			if (i < 0)
+				return -1;
+			handle = *creds;
+			assert(type == CREDS_TLV_T(handle->list[i]));
+
+			if (value >= 0 && value < CREDS_TLV_L(handle->list[i]) * 32)
+				{
+				const int idx = i + 1 + (value / 32);
+				const __u32 bit = 1 << (value % 32);
+				handle->list[idx] |= bit;
+				return 0;
+				}
+			return -1; /* Fail, invalid capability value */
+		case CREDS_UID:
+		case CREDS_GID:
+			i = creds_adjust(creds, i, type, 1);
+			if (i < 0)
+				return -1;
+			assert(type == CREDS_TLV_T(handle->list[i]));
+			handle = *creds;
+			handle->list[i+1] = value;
+			return 0;
+		case CREDS_GRP:
+			if (i < handle->actual)
+				{
+				/* GRP exists, check for duplicate */
+				for (j = 0; j < CREDS_TLV_L(handle->list[i]); ++j)
+					if (handle->list[i+1+j] == value)
+						return 0; /* Already there, nothing to do */
+				/* Not there, need to expand GRP */
+				j = CREDS_TLV_L(handle->list[i]);
+				}
+			else
+				j = 0;
+			i = creds_adjust(creds, i, CREDS_GRP, j + 1);
+			if (i < 0)
+				return -1;
+			assert(type == CREDS_TLV_T(handle->list[i]));
+
+			handle = *creds;
+			handle->list[i+1+j] = value;
+			return 0;
+		default:
+			break;
+		}
 	return -1;
 }
 
 void creds_sub(creds_t creds, creds_type_t type, creds_value_t value)
 {
+	int i, j;
+
+	if (!creds)
+		return;
+
+	for (i = 0; ; i += 1 + CREDS_TLV_L(creds->list[i]))
+		{
+		if (i >=  creds->actual)
+			return; /* Not found */
+		if (CREDS_TLV_T(creds->list[i]) == type)
+			break;
+		}
+
+	switch (type)
+		{
+		case CREDS_CAP:
+			if (value >= 0 && value < CREDS_TLV_L(creds->list[i]) * 32)
+				{
+				const int idx = i + 1 + (value / 32);
+				const __u32 mask = ~(1 << (value % 32));
+				creds->list[idx] &= mask;
+				}
+			break;
+		case CREDS_UID:
+		case CREDS_GID:
+			i = creds_adjust(&creds, i, type, 0);
+			break;
+		case CREDS_GRP:
+			for (j = 0;; ++j)
+				if (j == CREDS_TLV_L(creds->list[i]))
+					return; /* Not found */
+				else if (creds->list[i+1+j] == value)
+					break;
+			/* Overwrite the value to be removed by
+			   by the last value, and adjust size ... */
+
+			creds->list[i+1+j] =
+				creds->list[i + CREDS_TLV_L(creds->list[i])];
+			i = creds_adjust(&creds, i, CREDS_GRP, CREDS_TLV_L(creds->list[i]) - 1);
+			break;
+		default:
+			break;
+		}
+
 }
 
 creds_t creds_getpeer(int fd)
