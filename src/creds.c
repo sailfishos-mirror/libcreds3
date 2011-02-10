@@ -139,6 +139,20 @@ void creds_free(creds_t creds)
 		}
 	}
 
+int creds_set(const creds_t creds)
+{
+	return -1;
+}
+
+int creds_add(creds_t *creds, creds_type_t type, creds_value_t value)
+{
+	return -1;
+}
+
+void creds_sub(creds_t creds, creds_type_t type, creds_value_t value)
+{
+}
+
 creds_t creds_getpeer(int fd)
 	{
 	struct ucred cr;

@@ -44,8 +44,6 @@
  * Most users of this API need to be aware of only one symbol:
  * CREDS_BAD.
  */
-
-
 #ifndef _SYS_CREDS_H
 #define _SYS_CREDS_H
 
@@ -145,6 +143,51 @@ void creds_clear(creds_t creds);
  */
 void creds_free(creds_t creds);
 
+/*!
+ * Modify credentials of current process.
+ *
+ * @param creds The handle for credentials to be applied.
+ *
+ * A requested credential is activated only if the current task has
+ * proper credentials to allow the operation.
+ *
+ * @credential CAP::setgid
+ * @credential CAP::setuid
+ *
+ * If there is a special support in kernel for this operation, also
+ * unprivileged task can use this function, but the resulting
+ * credentials set will be an intersection of the current and proposed
+ * set. This allows unprivileged task to decrease credentials.
+ */
+int creds_set(const creds_t creds);
+
+/*!
+ * Add a credential to the credential data
+ *
+ * @param creds A pointer to the credentials handle.
+ * @param type The type of the credential value
+ * @param value The value of the credential
+ *
+ * @return 0 on success, -1 on failure
+ *
+ * This operation can change the content of the credentials handle and
+ * invalidate previous value -- thus, if application has copied the
+ * handle to multiple locations, it must update all copies with the
+ * value in handle that was passed to this function.
+ */
+int creds_add(creds_t *creds, creds_type_t type, creds_value_t value);
+
+/*!
+ * Subtract credential fromt the credential data
+ *
+ * @param creds The credentials handle
+ * @param type The type of the credential value
+ * @param value The value of the credentail
+ *
+ * Removes the specified credential, if present in the creds,
+ * otherwise does nothing. There are no error conditions.
+ */
+void creds_sub(creds_t creds, creds_type_t type, creds_value_t value);
 
 /*!
  * Iterate over all credentials values.
@@ -272,7 +315,6 @@ const uint32_t *creds_export(creds_t creds, size_t *length);
  */
 creds_t creds_import(const uint32_t *list, size_t length);
 
-	
 #ifdef	__cplusplus
 }
 #endif
