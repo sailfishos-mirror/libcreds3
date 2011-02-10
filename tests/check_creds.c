@@ -103,6 +103,7 @@ START_TEST(test_gettask)
 	smackman_add(ctx, "Apple", "Orange", "rwx");
 	smackman_add(ctx, "Plum", "Peach", "rx");
 	smackman_add(ctx, "Banana", "Peach", "xa");
+	sn = smackman_to_short_name(ctx, "Banana");
 
 	smackman_save(ctx);
 	smackman_free(ctx);
@@ -134,7 +135,13 @@ START_TEST(test_gettask)
 			break;
 		}
 
-		(void)creds_creds2str(type, value, buf, sizeof(buf));
+		ok = creds_creds2str(type, value, buf, sizeof(buf));
+		ck_assert_msg(ok >= 0, "Conversion failed for SM-%08X\n", value);
+		if (ok < 0) {
+			ok = 0;
+			break;
+		}
+
 		buf[sizeof(buf)-1] = 0;
 		ok =  strcmp("SMACK::Banana", buf) == 0;
 		ck_assert_msg(ok, "Invalid long name %s", buf);
@@ -144,6 +151,75 @@ START_TEST(test_gettask)
 
 	creds_free(cr);
 	ck_assert_msg(ok, "Security context not succesfully retrieved.");
+}
+END_TEST
+
+START_TEST(test_have_access)
+{
+	SmackmanContext ctx;
+	creds_value_t value;
+	creds_type_t type;
+	int ret;
+	char buf[200];
+	mode_t mode;
+	FILE *fp;
+	const char *sn;
+	creds_t cr;
+
+	mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+
+	unlink("labels");
+	creat("labels", mode);
+
+	unlink("load");
+	creat("load", mode);
+
+	ctx = smackman_new("load", "labels");
+	ck_assert_msg(ctx != NULL, "SmackmanContext not created for non-existing labels file");
+	if (ctx == NULL)
+		return;
+
+	smackman_add(ctx, "Apple", "Orange", "rwx");
+	smackman_add(ctx, "Plum", "Peach", "rx");
+	smackman_add(ctx, "Banana", "Peach", "xa");
+
+	smackman_save(ctx);
+	smackman_free(ctx);
+
+	ctx = smackman_new("load", "labels");
+	ck_assert_msg(ctx != NULL, "SmackmanContext not created for non-existing labels file");
+	if (ctx == NULL)
+		return;
+
+	fp = fopen("/proc/self/attr/current", "w");
+	sn = smackman_to_short_name(ctx, "Banana");
+	fprintf(fp, "%s", sn);
+	fclose(fp);
+
+	smackman_free(ctx);
+
+	cr = creds_gettask(0);
+	ck_assert_msg(cr != NULL, "Couldn't get creds for self.");
+	if (cr == NULL)
+		return;
+
+	creds_str2creds("SMACK::Peach", &value);
+	ret = creds_have_access(cr, CREDS_SMACK, value, "a");
+	ck_assert_msg(ret == 1, "No access");
+
+	creds_str2creds("SMACK::Peach", &value);
+	ret = creds_have_access(cr, CREDS_SMACK, value, "ax");
+	ck_assert_msg(ret == 1, "No access");
+
+	creds_str2creds("SMACK::Peach", &value);
+	ret = creds_have_access(cr, CREDS_SMACK, value, "wax");
+	ck_assert_msg(ret == 0, "Access");
+
+	creds_str2creds("SMACK::Orange", &value);
+	ret = creds_have_access(cr, CREDS_SMACK, value, "r");
+	ck_assert_msg(ret == 0, "Access");
+
+	creds_free(cr);
 }
 END_TEST
 
@@ -170,6 +246,7 @@ Suite *ruleset_suite (void)
 	tc_core = tcase_create("Creds");
 	tcase_add_test(tc_core, test_str2creds);
 	tcase_add_test(tc_core, test_gettask);
+	tcase_add_test(tc_core, test_have_access);
 	suite_add_tcase(s, tc_core);
 
 	return s;

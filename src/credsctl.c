@@ -375,21 +375,24 @@ int fallback_get(pid_t pid, SmackmanContext ctx, __u32 *list, size_t list_length
 	buf.data[buf.tail] = '\0';
 	close(buf.fd);
 
-	if (is_smack_short(buf.data))
-		smack_ptr = smackman_to_long_name(ctx, buf.data);
-	else
+	if (is_smack_short(buf.data)) {
+		if (smackman_to_long_name(ctx, buf.data) == NULL)
+			goto out;
+		smack_ptr = buf.data;
+	} else
 		smack_ptr = smackman_to_short_name(ctx, buf.data);
 
-	if (smack_ptr != NULL) {
-		value = strtoll(smack_ptr + SMACK_SHORT_PREFIX_LEN,
-				(char **)NULL, 16);
+	if (smack_ptr == NULL)
+		goto out;
 
-		index += 2;
-		if (index <= list_length) {
-			list[0] = CREDS_TL(CREDS_SMACK, 1);
-			list[1] = value;
-			list += 2;
-		}
+	value = strtoll(smack_ptr + SMACK_SHORT_PREFIX_LEN,
+			(char **)NULL, 16);
+
+	index += 2;
+	if (index <= list_length) {
+		list[0] = CREDS_TL(CREDS_SMACK, 1);
+		list[1] = value;
+		list += 2;
 	}
 
 	return index;
