@@ -40,6 +40,7 @@
 #include <assert.h>
 #include <smack.h>
 #include <smackman.h>
+#include <sys/capability.h>
 #include "creds.h"
 #include "creds_fallback.h"
 
@@ -125,6 +126,110 @@ void creds_free(creds_t creds)
 
 int creds_set(const creds_t creds)
 {
+	int i, j, k;
+	creds_type_t t;
+	int l;
+	gid_t *grps = NULL;
+	int grps_size = 0;
+	cap_t caps = NULL;
+	cap_value_t cvals[CAP_LAST_CAP + 1];
+	int fd;
+	ssize_t len;
+	int pos;
+	char smack[SMACK_LABEL_SIZE];
+
+	if (! creds || creds->actual <= 0)
+		return -1;
+
+	i = 0;
+	for (;;) {
+		if (i >= creds->actual)
+			break;
+
+		t = CREDS_TLV_T(creds->list[i]);
+		l = CREDS_TLV_L(creds->list[i]);
+
+		switch (t) {
+		case CREDS_UID:
+			if (seteuid(creds->list[i + 1]) < 0)
+				goto out;
+			break;
+		case CREDS_GID:
+			if (setegid(creds->list[i + 1]) < 0)
+				goto out;
+			break;
+		case CREDS_GRP:
+			if (grps_size < l) {
+				grps = realloc(grps, l * sizeof(gid_t));
+				if (grps == NULL)
+					goto out;
+			}
+
+			for (j = 0; j < l; j++)
+				grps[j] = creds->list[i + j + 1];
+
+			if (setgroups(l, grps) < 0)
+				goto out;
+			break;
+		case CREDS_CAP:
+			caps = cap_init();
+			if (caps == NULL)
+				goto out;
+
+			k = 0;
+			for (j = 0; j < (l * 32); ++j) {
+				if (k > CAP_LAST_CAP)
+					break;
+				const int idx = 1 + i + j / 32;
+				const __u32 bit = 1 << (j % 32);
+				if (creds->list[idx] & bit) {
+					cvals[k++] = j;
+				}
+			}
+
+			if (cap_clear(caps) < 0)
+				goto out;
+
+			if (cap_set_flag(caps, CAP_PERMITTED,  k, cvals, CAP_SET) < 0)
+				goto out;
+
+			if (cap_set_flag(caps, CAP_EFFECTIVE,  k, cvals, CAP_SET) < 0)
+				goto out;
+
+			if (cap_set_proc(caps) < 0)
+				goto out;
+
+			cap_free(caps);
+			break;
+		case CREDS_SMACK:
+			fd = open("/proc/self/attr/current", O_WRONLY);
+			if (fd < 0)
+				goto out;
+
+			sprintf(smack, "SM-%08X", creds->list[i + 1]);
+
+			pos = 0;
+			for (;;) {
+				len = write(fd, smack, SMACK_SHORT_LEN - pos, pos);
+				if (len < 0)
+					goto out;
+				pos += len;
+				if (pos >= SMACK_SHORT_LEN)
+					break;
+			}
+			break;
+		default:
+			printf("Unknown\n");
+			break;
+		}
+
+		i += l + 1;
+	}
+
+	return 0;
+out:
+	free(grps);
+	cap_free(caps);
 	return -1;
 }
 

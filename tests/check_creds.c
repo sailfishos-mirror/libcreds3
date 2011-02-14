@@ -223,6 +223,22 @@ START_TEST(test_have_access)
 }
 END_TEST
 
+START_TEST(test_set_creds)
+{
+	creds_t cr;
+	int ret;
+
+	cr = creds_gettask(0);
+	ck_assert_msg(cr != NULL, "Couldn't get creds for self.");
+	if (cr == NULL)
+		return;
+
+	ret = creds_set(cr);
+	ck_assert_msg(ret >= 0, "creds_set failed");
+	creds_free(cr);
+}
+END_TEST
+
 Suite *ruleset_suite (void)
 {
 	Suite *s;
@@ -247,6 +263,7 @@ Suite *ruleset_suite (void)
 	tcase_add_test(tc_core, test_str2creds);
 	tcase_add_test(tc_core, test_gettask);
 	tcase_add_test(tc_core, test_have_access);
+	tcase_add_test(tc_core, test_set_creds);
 	suite_add_tcase(s, tc_core);
 
 	return s;
