@@ -227,6 +227,7 @@ START_TEST(test_set_creds)
 {
 	creds_t cr;
 	creds_value_t value;
+	creds_value_t video;
 	creds_type_t type = CREDS_GRP;
 	char buf[512];
 	int ret, i;
@@ -244,6 +245,9 @@ START_TEST(test_set_creds)
 		}
 	}
 
+	type = creds_str2creds("GRP::video", &video);
+	creds_add(&cr, CREDS_GRP, video);
+
 	ret = creds_set(cr);
 	ck_assert_msg(ret >= 0, "creds_set failed");
 	creds_free(cr);
@@ -254,8 +258,11 @@ START_TEST(test_set_creds)
 		return;
 
 	while (type != CREDS_BAD)
-		for (i = 0; (type = creds_list(cr, i, &value)) != CREDS_BAD; ++i)
-			ck_assert_msg(type != CREDS_GRP, "Group found although all of them should be removed.");
+		for (i = 0; (type = creds_list(cr, i, &value)) != CREDS_BAD; ++i) {
+			if (type != CREDS_GRP)
+				continue;
+			ck_assert_msg(value == video, "Group other than video found.");
+		}
 
 	creds_free(cr);
 }
