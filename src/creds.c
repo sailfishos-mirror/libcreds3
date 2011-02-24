@@ -768,7 +768,7 @@ creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
 					*value = creds->list[i+1];
 					return CREDS_SMACK;
 					}
-				index;
+				--index;
 				break;
 			default:
 				break;

@@ -226,15 +226,37 @@ END_TEST
 START_TEST(test_set_creds)
 {
 	creds_t cr;
-	int ret;
+	creds_value_t value;
+	creds_type_t type = CREDS_GRP;
+	char buf[512];
+	int ret, i;
+	cr = creds_gettask(0);
+	ck_assert_msg(cr != NULL, "Couldn't get creds for self.");
+	if (cr == NULL)
+		return;
+
+	while (type != CREDS_BAD) {
+		for (i = 0; (type = creds_list(cr, i, &value)) != CREDS_BAD; ++i) {
+			if (type != CREDS_GRP)
+				continue;
+			creds_sub(cr, type, value);
+			break;
+		}
+	}
+
+	ret = creds_set(cr);
+	ck_assert_msg(ret >= 0, "creds_set failed");
+	creds_free(cr);
 
 	cr = creds_gettask(0);
 	ck_assert_msg(cr != NULL, "Couldn't get creds for self.");
 	if (cr == NULL)
 		return;
 
-	ret = creds_set(cr);
-	ck_assert_msg(ret >= 0, "creds_set failed");
+	while (type != CREDS_BAD)
+		for (i = 0; (type = creds_list(cr, i, &value)) != CREDS_BAD; ++i)
+			ck_assert_msg(type != CREDS_GRP, "Group found although all of them should be removed.");
+
 	creds_free(cr);
 }
 END_TEST
