@@ -8,4 +8,4 @@ Description: Library for querying and enforcing task credentials.
 Requires:
 Version: @PACKAGE_VERSION@
 Libs: -L${libdir} -lcreds
-Cflags: -I${includedir}/libcreds3
+Cflags: -I${includedir}

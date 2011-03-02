@@ -1,4 +1,4 @@
-library_includedir=$(includedir)/libcreds3
+library_includedir=$(includedir)/sys
 library_include_HEADERS=src/creds.h
 
 pkgconfigdir = $(libdir)/pkgconfig
