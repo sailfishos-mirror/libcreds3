@@ -32,13 +32,9 @@
 #include <smackman.h>
 #include <creds_fallback.h>
 
-START_TEST(test_str2creds)
+static void init_test(void)
 {
 	SmackmanContext ctx;
-	creds_value_t value;
-	creds_type_t type;
-	int ret;
-	char buf[200];
 	mode_t mode;
 
 	mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
@@ -60,16 +56,46 @@ START_TEST(test_str2creds)
 
 	smackman_save(ctx);
 	smackman_free(ctx);
+}
 
-	type = creds_str2creds("SMACK::Plum", &value);
-	ck_assert_msg(value != -1, "creds_str2creds failed");
-	ret = creds_creds2str(type, value, buf, sizeof(buf));
-	ck_assert_msg(value != -1, "creds_creds2str failed");
+START_TEST(test_str2creds)
+{
+	creds_value_t value;
+	creds_type_t type;
+	int ret;
+	char buf[200];
+	const char *cred_table[] = {"SMACK::Plum", "SMACK::Peach"};
+	int i;
 
-	type = creds_str2creds("SMACK::Peach", &value);
-	ck_assert_msg(value != -1, "creds_str2creds failed");
+	init_test();
+
+	for (i = 0; i < sizeof(cred_table) / sizeof(const char *); ++i) {
+		type = creds_str2creds(cred_table[i], &value);
+		ck_assert_msg(type != CREDS_BAD, "creds_str2creds failed");
+		if (type == CREDS_BAD)
+			return;
+
+		ret = creds_creds2str(type, value, buf, sizeof(buf));
+		ck_assert_msg(ret >= 0, "creds_creds2str failed");
+		if (ret < 0)
+			return;
+
+		ck_assert_msg(strcmp(cred_table[i], buf) == 0,
+			      "credential does not match to original");
+	}
+
+	type = creds_str2creds("Banana", &value);
+	ck_assert_msg(type != CREDS_BAD, "creds_str2creds failed");
+	if (type == CREDS_BAD)
+		return;
+
 	ret = creds_creds2str(type, value, buf, sizeof(buf));
-	ck_assert_msg(value != -1, "creds_creds2str failed");
+	ck_assert_msg(ret >= 0, "creds_creds2str failed");
+	if (ret < 0)
+		return;
+
+	ck_assert_msg(strcmp("SMACK::Banana", buf) == 0,
+		      "credential does not match to original");
 }
 END_TEST
 
@@ -80,33 +106,13 @@ START_TEST(test_gettask)
 	creds_type_t type;
 	int ret;
 	char buf[200];
-	mode_t mode;
 	FILE *fp;
 	const char *sn;
 	creds_t cr;
 	int index;
 	int ok = 0;
 
-	mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
-
-	unlink("labels");
-	creat("labels", mode);
-
-	unlink("load");
-	creat("load", mode);
-
-	ctx = smackman_new("load", "labels");
-	ck_assert_msg(ctx != NULL, "SmackmanContext not created for non-existing labels file");
-	if (ctx == NULL)
-		return;
-
-	smackman_add(ctx, "Apple", "Orange", "rwx");
-	smackman_add(ctx, "Plum", "Peach", "rx");
-	smackman_add(ctx, "Banana", "Peach", "xa");
-	sn = smackman_to_short_name(ctx, "Banana");
-
-	smackman_save(ctx);
-	smackman_free(ctx);
+	init_test();
 
 	ctx = smackman_new("load", "labels");
 	ck_assert_msg(ctx != NULL, "SmackmanContext not created for non-existing labels file");
@@ -161,30 +167,11 @@ START_TEST(test_have_access)
 	creds_type_t type;
 	int ret;
 	char buf[200];
-	mode_t mode;
 	FILE *fp;
 	const char *sn;
 	creds_t cr;
 
-	mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
-
-	unlink("labels");
-	creat("labels", mode);
-
-	unlink("load");
-	creat("load", mode);
-
-	ctx = smackman_new("load", "labels");
-	ck_assert_msg(ctx != NULL, "SmackmanContext not created for non-existing labels file");
-	if (ctx == NULL)
-		return;
-
-	smackman_add(ctx, "Apple", "Orange", "rwx");
-	smackman_add(ctx, "Plum", "Peach", "rx");
-	smackman_add(ctx, "Banana", "Peach", "xa");
-
-	smackman_save(ctx);
-	smackman_free(ctx);
+	init_test();
 
 	ctx = smackman_new("load", "labels");
 	ck_assert_msg(ctx != NULL, "SmackmanContext not created for non-existing labels file");

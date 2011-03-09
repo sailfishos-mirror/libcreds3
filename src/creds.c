@@ -708,6 +708,10 @@ long creds_str2creds(const char *credential, creds_value_t *value)
 		*value = creds_typestr2creds(i, endptr+2);
 		return (*value == CREDS_BAD) ? CREDS_BAD : i;
 	}
+
+	/* Assume CREDS_SMACK and forget prefix */
+	return creds_str2smack(credential, value);
+
 	return CREDS_BAD;
 }
 
