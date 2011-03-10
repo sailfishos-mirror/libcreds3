@@ -41,6 +41,7 @@
 #include <smack.h>
 #include <smackman.h>
 #include <sys/capability.h>
+#include <pthread.h>
 #include "creds.h"
 #include "creds_fallback.h"
 
@@ -55,8 +56,6 @@ static const int initial_list_size =
 struct _creds_struct
 	{
 	long actual;		/* Actual list items */
-	SmackRuleSet rules;
-	SmackmanContext labels;
 #ifdef CREDS_AUDIT_LOG
 	creds_audit_t audit;	/* Audit information */
 #endif
@@ -82,6 +81,77 @@ creds_fixed_types[CREDS_MAX] =
 	[CREDS_CAP] = STRING("CAP::"),
 	[CREDS_SMACK] = STRING("SMACK::"),
 	};
+
+static SmackmanContext smack_labels = NULL;
+static SmackRuleSet smack_rules = NULL;
+static time_t smack_labels_mtime = 0;
+static time_t smack_rules_mtime = 0;
+static pthread_mutex_t smack_labels_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t smack_rules_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int refresh_smack_data(void)
+{
+	struct stat sb;
+	int ret;
+	int result = 0;
+
+	if (pthread_mutex_lock(&smack_labels_mutex) != 0) {
+		result = -1;
+		goto out;
+	}
+
+	if (pthread_mutex_lock(&smack_rules_mutex) != 0) {
+		result = -1;
+		goto out;
+	}
+
+	if (smack_labels != NULL) {
+		ret = stat(SMACKMAN_LABELS_PATH, &sb);
+		if (ret) {
+			result = -1;
+			goto out;
+		}
+
+		if (sb.st_mtime != smack_labels_mtime) {
+			smackman_free(smack_labels);
+			smack_labels = NULL;
+		}
+	}
+
+	if (smack_labels == NULL) {
+		smack_labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
+		if (smack_labels == NULL) {
+			result = -1;
+			goto out;
+		}
+	}
+
+	if (smack_rules != NULL) {
+		ret = stat(SMACKMAN_LOAD_PATH, &sb);
+		if (ret) {
+			result = -1;
+			goto out;
+		}
+
+		if (sb.st_mtime != smack_rules_mtime) {
+			smack_rule_set_free(smack_rules);
+			smack_rules = NULL;
+		}
+	}
+
+	if (smack_rules == NULL) {
+		smack_rules = smack_rule_set_new(SMACKMAN_LOAD_PATH);
+		if (smack_rules == NULL) {
+			result = -1;
+			goto out;
+		}
+	}
+
+out:
+	(void) pthread_mutex_unlock(&smack_labels_mutex);
+	(void) pthread_mutex_unlock(&smack_rules_mutex);
+	return 0;
+}
 
 static const __u32 *find_value(int type, creds_t creds)
 	{
@@ -118,8 +188,6 @@ void creds_free(creds_t creds)
 #endif
 	if (creds)
 		{
-		smack_rule_set_free(creds->rules);
-		smackman_free(creds->labels);
 		free(creds);
 		}
 	}
@@ -476,15 +544,11 @@ creds_t creds_gettask(pid_t pid)
 	long actual = initial_list_size;
 	int maxtries = 4;
 
+	if (refresh_smack_data() == -1)
+		goto out;
+
 	handle = (creds_t)calloc(1, sizeof(struct _creds_struct) + actual * sizeof(__u32));
 	handle->list_size = initial_list_size;
-
-	handle->rules = smack_rule_set_new(SMACKMAN_LOAD_PATH);
-	if (handle->rules == NULL)
-		goto out;
-	handle->labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
-	if (handle->labels == NULL)
-		goto out;
 
 	do {
 		creds_t new_handle = (creds_t)realloc(handle, sizeof(struct _creds_struct) + actual * sizeof(__u32));
@@ -497,9 +561,14 @@ creds_t creds_gettask(pid_t pid)
 		handle = new_handle;
 
 		handle->list_size = actual;
+
+		if (pthread_mutex_lock(&smack_labels_mutex) != 0)
+			goto out;
 		handle->actual = actual =
-			fallback_get(pid, handle->labels, handle->list,
+			fallback_get(pid, smack_labels, handle->list,
 				     handle->list_size);
+		(void) pthread_mutex_unlock(&smack_labels_mutex);
+
 		/* warnx("max items=%d, returned %ld", handle->list_size, actual); */
 		if (actual < 0) {
 			/* Some error detected */
@@ -612,27 +681,25 @@ static long creds_str2gid(const char *group)
 
 static long creds_str2smack(const char *credential, creds_value_t *value)
 {
-	SmackmanContext ctx;
 	const char *short_name;
 	int len;
 
-	ctx = smackman_new(NULL, SMACKMAN_LABELS_PATH);
-	if (ctx == NULL)
+	if (refresh_smack_data() == -1)
 		return CREDS_BAD;
 
 	/* Return error *always* when caller tries to access
 	 * credential that does not exist in our labels database.
 	 */
-	short_name = smackman_to_short_name(ctx, credential);
-	if (short_name == NULL) {
-		smackman_free(ctx);
+	if (pthread_mutex_lock(&smack_labels_mutex) != 0)
 		return CREDS_BAD;
-	}
+	short_name = smackman_to_short_name(smack_labels, credential);
+	(void) pthread_mutex_unlock(&smack_labels_mutex);
+	if (short_name == NULL)
+		return CREDS_BAD;
 
 	*value = strtoll(short_name + SMACK_SHORT_PREFIX_LEN,
 			 (char **)NULL, 16);
 
-	smackman_free(ctx);
 	return CREDS_SMACK;
 }
 
@@ -711,8 +778,6 @@ long creds_str2creds(const char *credential, creds_value_t *value)
 
 	/* Assume CREDS_SMACK and forget prefix */
 	return creds_str2smack(credential, value);
-
-	return CREDS_BAD;
 }
 
 creds_type_t creds_list(const creds_t creds, int index, creds_value_t *value)
@@ -916,6 +981,9 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	const __u32 *item;
 	int res;
 
+	if (refresh_smack_data() == -1)
+		return 0;
+
 	res = creds_have_p(creds, type, value);
 	if (res || type != CREDS_SMACK)
 		return res;
@@ -930,13 +998,22 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	/* Return no access *always* when caller tries to access
 	 * credential that does not exist in our labels database.
 	 */
-	if (smackman_to_long_name(creds->labels, object) == NULL)
+	if (pthread_mutex_lock(&smack_labels_mutex) != 0)
 		return 0;
+	if (smackman_to_long_name(smack_labels, object) == NULL) {
+		(void) pthread_mutex_unlock(&smack_labels_mutex);
+		return 0;
+	}
+	(void) pthread_mutex_unlock(&smack_labels_mutex);
 
-	return smack_rule_set_have_access(creds->rules,
-					  subject,
-					  object,
-					  access_type);
+	if (pthread_mutex_lock(&smack_rules_mutex) != 0)
+		return 0;
+	res = smack_rule_set_have_access(smack_rules,
+					 subject,
+					 object,
+					 access_type);
+	(void) pthread_mutex_unlock(&smack_rules_mutex);
+	return res;
 }
 
 int creds_have_p(const creds_t creds, creds_type_t type, creds_value_t value)
@@ -1062,13 +1139,11 @@ static int creds_uid2str(creds_type_t type, creds_value_t value, char *buf, size
 
 static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, size_t size)
 {
-	SmackmanContext ctx;
 	char short_name[SMACK_LABEL_SIZE];
 	const char *long_name;
 	int len;
 
-	ctx = smackman_new(NULL, SMACKMAN_LABELS_PATH);
-	if (ctx == NULL)
+	if (refresh_smack_data() == -1)
 		return -1;
 
 	sprintf(short_name, SMACK_SHORT_PREFIX "%08X", value);
@@ -1076,16 +1151,17 @@ static int creds_smack2str(creds_type_t type, creds_value_t value, char *buf, si
 	/* Return error *always* when caller tries to access
 	 * credential that does not exist in our labels database.
 	 */
-	long_name = smackman_to_long_name(ctx, short_name);
+	if (pthread_mutex_lock(&smack_labels_mutex) != 0)
+		return 0;
+	long_name = smackman_to_long_name(smack_labels, short_name);
 	if (long_name == NULL) {
-		smackman_free(ctx);
+		(void) pthread_mutex_unlock(&smack_labels_mutex);
 		return -1;
 	}
+	(void) pthread_mutex_unlock(&smack_labels_mutex);
 
 	len = snprintf(buf, size, "%s%s", creds_fixed_types[type].prefix,
 		       long_name);
-
-	smackman_free(ctx);
 
 	return len;
 }
@@ -1133,17 +1209,12 @@ creds_t creds_import(const uint32_t *list, size_t length)
 {
 	creds_t handle;
 
+	if (refresh_smack_data() == -1)
+		return NULL;
+
 	handle = (creds_t)malloc(sizeof(*handle) + length * sizeof(handle->list[0]));
 	if (!handle)
 		return NULL;
-
-	handle->rules = smack_rule_set_new(SMACKMAN_LOAD_PATH);
-	if (handle->rules == NULL)
-		goto out;
-
-	handle->labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
-	if (handle->labels == NULL)
-		goto out;
 
 	handle->actual = handle->list_size = length;
 	memcpy(handle->list, list, length * sizeof(handle->list[0]));
