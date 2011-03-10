@@ -150,7 +150,7 @@ static int refresh_smack_data(void)
 out:
 	(void) pthread_mutex_unlock(&smack_labels_mutex);
 	(void) pthread_mutex_unlock(&smack_rules_mutex);
-	return 0;
+	return result;
 }
 
 static const __u32 *find_value(int type, creds_t creds)
