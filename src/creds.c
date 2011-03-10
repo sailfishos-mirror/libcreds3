@@ -97,7 +97,7 @@ static int refresh_smack_data(void)
 		goto out;
 	}
 
-	ret = stat(path, &sb);
+	ret = stat(SMACKMAN_LABELS_PATH, &sb);
 	if (ret) {
 		result = -1;
 		goto out;
