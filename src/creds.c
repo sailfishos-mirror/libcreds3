@@ -83,11 +83,8 @@ creds_fixed_types[CREDS_MAX] =
 	};
 
 static SmackmanContext smack_labels = NULL;
-static SmackRuleSet smack_rules = NULL;
 static time_t smack_labels_mtime = 0;
-static time_t smack_rules_mtime = 0;
 static pthread_mutex_t smack_labels_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t smack_rules_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int refresh_smack_data(void)
 {
@@ -96,11 +93,6 @@ static int refresh_smack_data(void)
 	int result = 0;
 
 	if (pthread_mutex_lock(&smack_labels_mutex) != 0) {
-		result = -1;
-		goto out;
-	}
-
-	if (pthread_mutex_lock(&smack_rules_mutex) != 0) {
 		result = -1;
 		goto out;
 	}
@@ -126,30 +118,8 @@ static int refresh_smack_data(void)
 		}
 	}
 
-	if (smack_rules != NULL) {
-		ret = stat(SMACKMAN_LOAD_PATH, &sb);
-		if (ret) {
-			result = -1;
-			goto out;
-		}
-
-		if (sb.st_mtime != smack_rules_mtime) {
-			smack_rule_set_free(smack_rules);
-			smack_rules = NULL;
-		}
-	}
-
-	if (smack_rules == NULL) {
-		smack_rules = smack_rule_set_new(SMACKMAN_LOAD_PATH);
-		if (smack_rules == NULL) {
-			result = -1;
-			goto out;
-		}
-	}
-
 out:
 	(void) pthread_mutex_unlock(&smack_labels_mutex);
-	(void) pthread_mutex_unlock(&smack_rules_mutex);
 	return result;
 }
 
@@ -1006,13 +976,10 @@ int creds_have_access(const creds_t creds, creds_type_t type, creds_value_t valu
 	}
 	(void) pthread_mutex_unlock(&smack_labels_mutex);
 
-	if (pthread_mutex_lock(&smack_rules_mutex) != 0)
-		return 0;
-	res = smack_rule_set_have_access(smack_rules,
-					 subject,
-					 object,
-					 access_type);
-	(void) pthread_mutex_unlock(&smack_rules_mutex);
+	res = smack_have_access(SMACKMAN_LOAD_PATH,
+				subject,
+				object,
+				access_type);
 	return res;
 }
 
