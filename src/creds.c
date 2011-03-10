@@ -97,13 +97,13 @@ static int refresh_smack_data(void)
 		goto out;
 	}
 
-	if (smack_labels != NULL) {
-		ret = stat(SMACKMAN_LABELS_PATH, &sb);
-		if (ret) {
-			result = -1;
-			goto out;
-		}
+	ret = stat(path, &sb);
+	if (ret) {
+		result = -1;
+		goto out;
+	}
 
+	if (smack_labels != NULL) {
 		if (sb.st_mtime != smack_labels_mtime) {
 			smackman_free(smack_labels);
 			smack_labels = NULL;
@@ -111,6 +111,8 @@ static int refresh_smack_data(void)
 	}
 
 	if (smack_labels == NULL) {
+		smack_labels_mtime = sb.st_mtime;
+
 		smack_labels = smackman_new(NULL, SMACKMAN_LABELS_PATH);
 		if (smack_labels == NULL) {
 			result = -1;
